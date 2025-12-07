@@ -75,6 +75,11 @@ func NewRouter(manager *uptime.Manager, store *db.Store) http.Handler {
 			// Admin
 			adminH := NewAdminHandler(store, manager)
 			protected.Post("/admin/reset", adminH.ResetDatabase)
+
+			// Settings
+			settingsH := NewSettingsHandler(store, manager)
+			protected.Get("/settings", settingsH.GetSettings)
+			protected.Patch("/settings", settingsH.UpdateSettings)
 		})
 	})
 

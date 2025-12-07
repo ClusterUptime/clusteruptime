@@ -3,6 +3,7 @@ package uptime
 import (
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,11 +16,12 @@ type Job struct {
 }
 
 type CheckResult struct {
-	MonitorID string
-	URL       string
-	Status    bool
-	Latency   int64
-	Timestamp time.Time
+	MonitorID  string
+	URL        string
+	Status     bool
+	Latency    int64
+	Timestamp  time.Time
+	StatusCode int
 }
 
 type Manager struct {
@@ -31,6 +33,8 @@ type Manager struct {
 	resultQueue chan CheckResult
 	stopCh      chan struct{}
 	wg          sync.WaitGroup
+
+	latencyThreshold int64
 }
 
 const (
@@ -40,13 +44,23 @@ const (
 )
 
 func NewManager(store *db.Store) *Manager {
-	return &Manager{
-		store:       store,
-		monitors:    make(map[string]*Monitor),
-		jobQueue:    make(chan Job, 1000),         // Buffer for bursts
-		resultQueue: make(chan CheckResult, 1000), // Buffer for results
-		stopCh:      make(chan struct{}),
+	m := &Manager{
+		store:            store,
+		monitors:         make(map[string]*Monitor),
+		jobQueue:         make(chan Job, 1000),         // Buffer for bursts
+		resultQueue:      make(chan CheckResult, 1000), // Buffer for results
+		stopCh:           make(chan struct{}),
+		latencyThreshold: 1000, // Default
 	}
+
+	// Load settings
+	if val, err := store.GetSetting("latency_threshold"); err == nil {
+		if i, err := strconv.Atoi(val); err == nil {
+			m.latencyThreshold = int64(i)
+		}
+	}
+
+	return m
 }
 
 func (m *Manager) Start() {
@@ -119,12 +133,18 @@ func (m *Manager) worker() {
 			}
 		}
 
+		statusCode := 0
+		if err == nil && resp != nil {
+			statusCode = resp.StatusCode
+		}
+
 		m.resultQueue <- CheckResult{
-			MonitorID: job.MonitorID,
-			URL:       job.URL,
-			Status:    isUp,
-			Latency:   latency,
-			Timestamp: start,
+			MonitorID:  job.MonitorID,
+			URL:        job.URL,
+			Status:     isUp,
+			Latency:    latency,
+			Timestamp:  start,
+			StatusCode: statusCode,
 		}
 	}
 }
@@ -162,32 +182,61 @@ func (m *Manager) resultProcessor() {
 			if exists {
 				active, lastLatency, hasHistory := mon.GetLastStatus()
 
-				// Only detect events if we have previous history (don't alert on first run/boot unless we Hydrated)
-				// Since we Hydrate from DB, hasHistory should be true if it was running.
-				// If it's a brand new monitor, hasHistory is false -> No event (correct).
+				// 1. Detect Events
+				// Logic:
+				// - If no history (New Monitor):
+				//   - If Status=Down -> Alert "Monitor is down (initial)"
+				// - If has history:
+				//   - If Status Changed: Alert Up/Down.
+				//   - If Status=Up and Latency crossed threshold (Debounced by previous state): Alert Degraded.
 
-				if hasHistory {
-					// 1. UP <-> DOWN
+				// 2. Latency Threshold
+				m.mu.RLock()
+				threshold := m.latencyThreshold
+				m.mu.RUnlock()
+
+				isDegraded := res.Status && res.Latency > threshold
+				wasDegraded := active && lastLatency > threshold
+
+				message := "Monitor is down"
+				if res.StatusCode > 0 {
+					message += " (Status: " + strconv.Itoa(res.StatusCode) + ")"
+				}
+
+				if !hasHistory {
+					// Handle Initial State
+					if !res.Status {
+						go m.store.CreateEvent(res.MonitorID, "down", message)
+						log.Printf("Monitor %s is DOWN (Initial)", res.MonitorID)
+					}
+				} else {
+					// Handle Transitions
 					if active && !res.Status {
-						// DOWN Event
-						go m.store.CreateEvent(res.MonitorID, "down", "Monitor is down")
+						// UP -> DOWN
+						go m.store.CreateEvent(res.MonitorID, "down", message)
 						log.Printf("Monitor %s is DOWN", res.MonitorID)
 					} else if !active && res.Status {
-						// RECOVERED Event
+						// DOWN -> UP
 						go m.store.CreateEvent(res.MonitorID, "recovered", "Monitor recovered")
 						log.Printf("Monitor %s RECOVERED", res.MonitorID)
 					}
 
-					// 2. Latency Degradation (Simple Threshold: 500ms)
-					if res.Status && res.Latency > 500 {
-						if lastLatency <= 500 {
-							// New Degradation
-							go m.store.CreateEvent(res.MonitorID, "degraded", "High latency detected (>500ms)")
+					// Handle Degradation (Only if UP)
+					if res.Status {
+						if !wasDegraded && isDegraded {
+							// Normal -> Degraded
+							go m.store.CreateEvent(res.MonitorID, "degraded", "High latency detected (>"+strconv.FormatInt(threshold, 10)+"ms)")
+						} else if wasDegraded && !isDegraded {
+							// Degraded -> Normal (Optional: Log it? Or just let it be silent?)
+							// For now, let's just log "recovered" from degradation?
+							// Or maybe "Latency normalized"?
+							go m.store.CreateEvent(res.MonitorID, "recovered", "Latency normalized")
 						}
 					}
 				}
 			}
 
+			// 3. Insert Check Result
 			// 2. Update In-Memory State
 			m.updateMonitorState(res)
 
@@ -197,10 +246,11 @@ func (m *Manager) resultProcessor() {
 				statusStr = "up"
 			}
 			batch = append(batch, db.CheckResult{
-				MonitorID: res.MonitorID,
-				Status:    statusStr,
-				Latency:   res.Latency,
-				Timestamp: res.Timestamp,
+				MonitorID:  res.MonitorID,
+				Status:     statusStr,
+				Latency:    res.Latency,
+				Timestamp:  res.Timestamp,
+				StatusCode: res.StatusCode,
 			})
 
 			if len(batch) >= BatchSize {
@@ -216,7 +266,7 @@ func (m *Manager) updateMonitorState(res CheckResult) {
 	m.mu.RUnlock()
 
 	if exists {
-		mon.RecordResult(res.Status, res.Latency, res.Timestamp)
+		mon.RecordResult(res.Status, res.Latency, res.Timestamp, res.StatusCode)
 	}
 }
 
@@ -257,7 +307,7 @@ func (m *Manager) Sync() {
 				for i := len(checks) - 1; i >= 0; i-- {
 					c := checks[i]
 					isUp := c.Status == "up" // "up" or "down"
-					mon.RecordResult(isUp, c.Latency, c.Timestamp)
+					mon.RecordResult(isUp, c.Latency, c.Timestamp, c.StatusCode)
 				}
 			}
 
@@ -282,6 +332,18 @@ func (m *Manager) GetMonitor(id string) *Monitor {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.monitors[id]
+}
+
+func (m *Manager) SetLatencyThreshold(ms int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.latencyThreshold = ms
+}
+
+func (m *Manager) GetLatencyThreshold() int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.latencyThreshold
 }
 
 // GetAll returns all running monitors

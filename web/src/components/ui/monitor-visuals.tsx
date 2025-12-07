@@ -2,11 +2,12 @@ import { Badge } from "@/components/ui/badge";
 import { Monitor } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { ArrowUp, ArrowDown, AlertTriangle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const StatusBadge = ({ status }: { status: Monitor['status'] }) => {
     if (status === 'up') {
         return (
-            <Badge variant="outline" className="border-green-800 bg-green-950/50 text-green-400 gap-1 px-2 py-1">
+            <Badge variant="outline" className="border-green-800 bg-green-950/50 text-green-400 gap-1 px-2 py-1 w-[105px] justify-center">
                 <ArrowUp className="w-3 h-3" />
                 Operational
             </Badge>
@@ -14,14 +15,14 @@ export const StatusBadge = ({ status }: { status: Monitor['status'] }) => {
     }
     if (status === 'down') {
         return (
-            <Badge variant="destructive" className="bg-red-950/50 border-red-800 text-red-500 gap-1 px-2 py-1 animate-pulse">
+            <Badge variant="destructive" className="bg-red-950/50 border-red-800 text-red-500 gap-1 px-2 py-1 animate-pulse w-[105px] justify-center">
                 <ArrowDown className="w-3 h-3" />
                 Downtime
             </Badge>
         );
     }
     return (
-        <Badge variant="secondary" className="bg-yellow-950/50 border-yellow-800 text-yellow-500 gap-1 px-2 py-1">
+        <Badge variant="secondary" className="bg-yellow-950/50 border-yellow-800 text-yellow-500 gap-1 px-2 py-1 w-[105px] justify-center">
             <AlertTriangle className="w-3 h-3" />
             Degraded
         </Badge>
@@ -33,27 +34,58 @@ export const UptimeHistory = ({ history }: { history: Monitor['history'] }) => {
     // Also, if it's empty, we might want to render placeholders? 
     // For now, let's just properly map over a safe array.
     const safeHistory = history || [];
+    const LIMIT = 30;
+    // Calculate how many empty slots we need to fill to the left
+    const emptyCount = Math.max(0, LIMIT - safeHistory.length);
+    const emptySlots = Array(emptyCount).fill(null);
 
-    // If it's a new monitor, it might have no history. Let's render empty slots or just nothing?
-    // User asked: "rellena con algo diferner" (fill with something different).
-    // Let's ensure we display something so layout doesn't collapse.
-    // If empty, let's create an array of "empty" states?
-    // Actually, backend should return empty array, but it returning null is the bug.
-    // Let's just fix the crash first.
+    // Combine empty slots + actual history
+    // This aligns the history to the right (newest)
+    const displaySlots = [...emptySlots, ...safeHistory].slice(-LIMIT);
 
     return (
-        <div className="flex gap-[2px] h-8 items-end w-full max-w-[200px] sm:max-w-none" title="Last 20 checks">
-            {safeHistory.map((status, i) => (
-                <div
-                    key={i}
-                    className={cn(
-                        "flex-1 rounded-sm transition-all duration-500",
-                        status === 'up' && "bg-green-500/20 hover:bg-green-500/80 h-full",
-                        status === 'degraded' && "bg-yellow-500/50 hover:bg-yellow-500 h-3/4",
-                        status === 'down' && "bg-red-500/80 hover:bg-red-500 h-full",
-                    )}
-                />
-            ))}
-        </div>
+        <TooltipProvider delayDuration={0}>
+            <div className="flex gap-[3px] h-9 items-end w-[280px] shrink-0" title="Last 30 checks">
+                {displaySlots.map((slot, i) => (
+                    <Tooltip key={i}>
+                        <TooltipTrigger asChild>
+                            <div
+                                className={cn(
+                                    "flex-1 rounded-[2px] transition-all duration-300 min-w-[6px]",
+                                    slot === null && "bg-slate-800/40 h-full", // Empty slot
+                                    slot?.status === 'up' && "bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.4)] h-full hover:bg-green-400",
+                                    slot?.status === 'degraded' && "bg-yellow-500 h-full hover:bg-yellow-400",
+                                    slot?.status === 'down' && "bg-red-500 h-full hover:bg-red-400",
+                                )}
+                            />
+                        </TooltipTrigger>
+                        {slot && (
+                            <TooltipContent className="text-xs bg-slate-900 border-slate-800 text-slate-200">
+                                <div className="font-semibold mb-1">
+                                    {new Date(slot.timestamp).toLocaleTimeString()}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className={cn(
+                                        "w-2 h-2 rounded-full",
+                                        slot.status === 'up' ? "bg-green-500" :
+                                            slot.status === 'down' ? "bg-red-500" : "bg-yellow-500"
+                                    )} />
+                                    <span>
+                                        {slot.status === 'up' ? 'Operational' :
+                                            slot.status === 'down' ? 'Downtime' : 'Degraded'}
+                                    </span>
+                                </div>
+                                <div className="mt-1 opacity-70">
+                                    {slot.statusCode ? `Status: ${slot.statusCode}` : 'Status: Unknown'}
+                                </div>
+                                <div className="opacity-70">
+                                    Latency: {slot.latency}ms
+                                </div>
+                            </TooltipContent>
+                        )}
+                    </Tooltip>
+                ))}
+            </div>
+        </TooltipProvider>
     );
 };

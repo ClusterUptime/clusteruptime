@@ -128,12 +128,16 @@ func (s *Store) migrate() error {
 	CREATE TABLE IF NOT EXISTS api_keys (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		key_prefix TEXT NOT NULL,
-		key_hash TEXT NOT NULL,
+		key_hash TEXT UNIQUE NOT NULL,
 		name TEXT NOT NULL,
-		user_id INTEGER,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		last_used_at DATETIME
 	);
+	CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT
+	);
+	INSERT OR IGNORE INTO settings (key, value) VALUES ('latency_threshold', '1000');
 	CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
 	`
 	if _, err := s.db.Exec(query); err != nil {
@@ -141,6 +145,8 @@ func (s *Store) migrate() error {
 	}
 	// Add timezone column if missing
 	_, _ = s.db.Exec("ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'UTC'")
+	// Add status_code column if missing (Migration for rich history)
+	_, _ = s.db.Exec("ALTER TABLE monitor_checks ADD COLUMN status_code INTEGER DEFAULT 0")
 
 	// Seed default global status page
 	// Use INSERT OR IGNORE to prevent overwriting 'public' status of existing page
@@ -162,7 +168,7 @@ func (s *Store) Reset() error {
 
 	tables := []string{
 		"users", "sessions", "groups", "monitors", "monitor_checks",
-		"monitor_events", "status_pages", "api_keys",
+		"monitor_events", "status_pages", "api_keys", "settings",
 	}
 
 	for _, table := range tables {
@@ -243,10 +249,11 @@ func (s *Store) DeleteMonitor(id string) error {
 }
 
 type CheckResult struct {
-	MonitorID string
-	Status    string
-	Latency   int64
-	Timestamp time.Time
+	MonitorID  string
+	Status     string
+	Latency    int64
+	Timestamp  time.Time
+	StatusCode int
 }
 
 func (s *Store) BatchInsertChecks(checks []CheckResult) error {
@@ -260,14 +267,16 @@ func (s *Store) BatchInsertChecks(checks []CheckResult) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("INSERT INTO monitor_checks (monitor_id, status, latency, timestamp) VALUES (?, ?, ?, ?)")
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO monitor_checks (monitor_id, status, latency, timestamp, status_code) VALUES (?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, c := range checks {
-		_, err := stmt.Exec(c.MonitorID, c.Status, c.Latency, c.Timestamp)
+		_, err := stmt.Exec(c.MonitorID, c.Status, c.Latency, c.Timestamp, c.StatusCode)
 		if err != nil {
 			return err
 		}
@@ -278,7 +287,7 @@ func (s *Store) BatchInsertChecks(checks []CheckResult) error {
 
 // GetMonitorChecks returns the last N checks for a monitor
 func (s *Store) GetMonitorChecks(monitorID string, limit int) ([]CheckResult, error) {
-	query := `SELECT monitor_id, status, latency, timestamp FROM monitor_checks 
+	query := `SELECT monitor_id, status, latency, timestamp, COALESCE(status_code, 0) FROM monitor_checks 
 			  WHERE monitor_id = ? ORDER BY timestamp DESC LIMIT ?`
 
 	rows, err := s.db.Query(query, monitorID, limit)
@@ -290,7 +299,7 @@ func (s *Store) GetMonitorChecks(monitorID string, limit int) ([]CheckResult, er
 	var checks []CheckResult
 	for rows.Next() {
 		var c CheckResult
-		if err := rows.Scan(&c.MonitorID, &c.Status, &c.Latency, &c.Timestamp); err != nil {
+		if err := rows.Scan(&c.MonitorID, &c.Status, &c.Latency, &c.Timestamp, &c.StatusCode); err != nil {
 			return nil, err
 		}
 		checks = append(checks, c)
@@ -571,6 +580,22 @@ func (s *Store) DeleteAPIKey(id int64) error {
 	return err
 }
 
+// Settings methods
+
+func (s *Store) GetSetting(key string) (string, error) {
+	var value string
+	err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	if err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+func (s *Store) SetSetting(key, value string) error {
+	_, err := s.db.Exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value)
+	return err
+}
+
 func (s *Store) ValidateAPIKey(key string) (bool, error) {
 	if len(key) < 12 {
 		return false, nil
@@ -603,4 +628,33 @@ func (s *Store) ValidateAPIKey(key string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+type MonitorEvent struct {
+	ID        int
+	MonitorID string
+	Type      string
+	Message   string
+	Timestamp time.Time
+}
+
+func (s *Store) GetMonitorEvents(monitorID string, limit int) ([]MonitorEvent, error) {
+	query := `SELECT id, monitor_id, type, message, timestamp FROM monitor_events 
+	          WHERE monitor_id = ? ORDER BY timestamp DESC LIMIT ?`
+
+	rows, err := s.db.Query(query, monitorID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []MonitorEvent
+	for rows.Next() {
+		var e MonitorEvent
+		if err := rows.Scan(&e.ID, &e.MonitorID, &e.Type, &e.Message, &e.Timestamp); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
 }

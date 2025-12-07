@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/clusteruptime/clusteruptime/internal/db"
 	"github.com/clusteruptime/clusteruptime/internal/uptime"
@@ -17,15 +19,47 @@ func NewUptimeHandler(manager *uptime.Manager, store *db.Store) *UptimeHandler {
 	return &UptimeHandler{manager: manager, store: store}
 }
 
+func getEventsForDTO(store *db.Store, monitorID string) []MonitorEvent {
+	events, err := store.GetMonitorEvents(monitorID, 10) // Get last 10 events
+	if err != nil {
+		return []MonitorEvent{}
+	}
+	var dtos []MonitorEvent
+	for _, e := range events {
+		dtos = append(dtos, MonitorEvent{
+			ID:        strconv.Itoa(e.ID),
+			Type:      e.Type,
+			Message:   e.Message,
+			Timestamp: e.Timestamp.Format(time.RFC3339),
+		})
+	}
+	return dtos
+}
+
 // Response Structures matching Frontend Store
+type HistoryPoint struct {
+	Status     string    `json:"status"`
+	Latency    int64     `json:"latency"`
+	Timestamp  time.Time `json:"timestamp"`
+	StatusCode int       `json:"statusCode"`
+}
+
 type MonitorDTO struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	URL       string   `json:"url"`
-	Status    string   `json:"status"`
-	Latency   int64    `json:"latency"`
-	History   []string `json:"history"`
-	LastCheck string   `json:"lastCheck"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	URL       string         `json:"url"`
+	Status    string         `json:"status"`
+	Latency   int64          `json:"latency"`
+	History   []HistoryPoint `json:"history"`
+	Events    []MonitorEvent `json:"events"`
+	LastCheck string         `json:"lastCheck"`
+}
+
+type MonitorEvent struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
 }
 
 type GroupDTO struct {
@@ -71,7 +105,7 @@ func (h *UptimeHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			statusStr := "down" // Default if not running
 			latency := int64(0)
 			lastCheck := "Never"
-			var historyStr []string
+			var historyPoints []HistoryPoint
 
 			if task != nil {
 				// It is running
@@ -79,9 +113,10 @@ func (h *UptimeHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 				if len(history) > 0 {
 					last := history[len(history)-1]
+					threshold := h.manager.GetLatencyThreshold()
 					if last.IsUp {
 						statusStr = "up"
-						if last.Latency > 500 {
+						if last.Latency > threshold {
 							statusStr = "degraded"
 						}
 					}
@@ -92,11 +127,16 @@ func (h *UptimeHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 						s := "down"
 						if h.IsUp {
 							s = "up"
-							if h.Latency > 500 {
+							if h.Latency > threshold {
 								s = "degraded"
 							}
 						}
-						historyStr = append(historyStr, s)
+						historyPoints = append(historyPoints, HistoryPoint{
+							Status:     s,
+							Latency:    h.Latency,
+							Timestamp:  h.Timestamp,
+							StatusCode: h.StatusCode,
+						})
 					}
 				} else {
 					// Running but no history yet?
@@ -115,8 +155,9 @@ func (h *UptimeHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 				URL:       meta.URL,
 				Status:    statusStr,
 				Latency:   latency,
-				History:   historyStr,
+				History:   historyPoints,
 				LastCheck: lastCheck,
+				Events:    getEventsForDTO(h.store, meta.ID),
 			})
 		}
 

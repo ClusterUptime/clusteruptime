@@ -29,22 +29,22 @@ function MonitorCard({ monitor }: { monitor: any }) {
     <>
       <div
         onClick={() => setDetailsOpen(true)}
-        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg bg-card/40 hover:bg-card/60 transition-colors gap-4 cursor-pointer group"
+        className="flex flex-col sm:flex-row items-center justify-between p-6 border rounded-lg bg-card/40 hover:bg-card/60 transition-all gap-6 cursor-pointer group w-full"
       >
-        <div className="space-y-1 min-w-[200px]">
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${monitor.status === 'up' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 animate-pulse'}`} />
-            <span className="font-medium text-sm group-hover:text-blue-400 transition-colors">{monitor.name}</span>
+        <div className="space-y-1.5 flex-1 min-w-0 mr-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${monitor.status === 'up' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500 animate-pulse'}`} />
+            <span className="font-semibold text-base group-hover:text-blue-400 transition-colors truncate block" title={monitor.name}>{monitor.name}</span>
           </div>
-          <div className="text-xs text-muted-foreground font-mono">{monitor.url}</div>
+          <div className="text-sm text-muted-foreground font-mono truncate block opacity-70" title={monitor.url}>{monitor.url}</div>
         </div>
 
-        <div className="flex-1 w-full sm:w-auto px-4">
+        <div className="flex-none hidden sm:block">
           <UptimeHistory history={monitor.history} />
         </div>
 
-        <div className="flex items-center gap-4 min-w-[180px] justify-end">
-          <div className="text-right">
+        <div className="flex items-center gap-4 w-[180px] justify-end shrink-0">
+          <div className="text-right whitespace-nowrap">
             <div className="text-xs font-mono text-muted-foreground">{monitor.latency}ms</div>
             <div className="text-[10px] text-muted-foreground opacity-50">{monitor.lastCheck}</div>
           </div>

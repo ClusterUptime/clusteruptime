@@ -6,10 +6,11 @@ import (
 )
 
 type Status struct {
-	Timestamp time.Time `json:"timestamp"`
-	IsUp      bool      `json:"isUp"`
-	Latency   int64     `json:"latencyMs"` // milliseconds
-	Error     string    `json:"error,omitempty"`
+	Timestamp  time.Time `json:"timestamp"`
+	IsUp       bool      `json:"isUp"`
+	Latency    int64     `json:"latencyMs"` // milliseconds
+	Error      string    `json:"error,omitempty"`
+	StatusCode int       `json:"statusCode"`
 }
 
 type Monitor struct {
@@ -65,14 +66,15 @@ func (m *Monitor) schedule() {
 }
 
 // RecordResult is called by the ResultProcessor to update in-memory history
-func (m *Monitor) RecordResult(isUp bool, latency int64, ts time.Time) {
+func (m *Monitor) RecordResult(isUp bool, latency int64, ts time.Time, statusCode int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	status := Status{
-		Timestamp: ts,
-		Latency:   latency,
-		IsUp:      isUp,
+		Timestamp:  ts,
+		Latency:    latency,
+		IsUp:       isUp,
+		StatusCode: statusCode,
 	}
 
 	// Keep last 50 checks

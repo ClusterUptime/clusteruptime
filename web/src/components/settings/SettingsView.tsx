@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMonitorStore } from "@/lib/store";
 import { useToast } from "@/components/ui/use-toast";
 import { APIKeysView } from "./APIKeysView";
@@ -65,6 +65,49 @@ function ResetDatabaseDialog() {
                 </AlertDialogContent>
             </AlertDialog>
         </div>
+    );
+}
+
+function GeneralSettings() {
+    const { settings, fetchSettings, updateSettings } = useMonitorStore();
+    const { toast } = useToast();
+    const [threshold, setThreshold] = useState(settings?.latency_threshold || "1000");
+
+    // Fetch settings on mount
+    useEffect(() => {
+        fetchSettings();
+    }, []);
+
+    const handleSave = async () => {
+        await updateSettings({ latency_threshold: threshold });
+        toast({ title: "Settings Saved", description: "Latency threshold updated." });
+    };
+
+    return (
+        <Card className="bg-slate-900/50 border-slate-800">
+            <CardHeader>
+                <CardTitle>General Settings</CardTitle>
+                <CardDescription>Global configuration for your monitors.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="latency">Latency Threshold (ms)</Label>
+                    <div className="text-sm text-slate-400 mb-2">
+                        Response times higher than this value will mark the service as "Degraded".
+                    </div>
+                    <div className="flex gap-4">
+                        <Input
+                            id="latency"
+                            type="number"
+                            value={threshold}
+                            onChange={(e) => setThreshold(e.target.value)}
+                            className="bg-slate-950 border-slate-800 max-w-[200px]"
+                        />
+                        <Button onClick={handleSave}>Save</Button>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -152,6 +195,8 @@ export function SettingsView() {
                         </form>
                     </CardContent>
                 </Card>
+
+                <GeneralSettings />
 
                 <Card className="bg-slate-900/20 border-slate-800">
                     <CardHeader>

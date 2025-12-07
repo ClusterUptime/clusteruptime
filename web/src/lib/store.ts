@@ -27,13 +27,20 @@ export interface User {
     timezone?: string;
 }
 
+export interface HistoryPoint {
+    status: 'up' | 'down' | 'degraded';
+    latency: number;
+    timestamp: string;
+    statusCode: number;
+}
+
 export interface Monitor {
     id: string;
     name: string;
     url: string;
     status: 'up' | 'down' | 'degraded';
     latency: number;
-    history: ('up' | 'down' | 'degraded')[];
+    history: HistoryPoint[];
     lastCheck: string;
     events: MonitorEvent[];
 }
@@ -65,7 +72,7 @@ interface MonitorStore {
 
     // Actions
     checkAuth: () => Promise<void>;
-    login: (username: string) => Promise<boolean>;
+    login: (username: string, password: string) => Promise<boolean>;
     logout: () => Promise<void>;
 
     // CRUD
@@ -112,6 +119,13 @@ export interface APIKey {
     name: string;
     createdAt: string;
     lastUsed?: string;
+    createAPIKey: (name: string) => Promise<string | null>;
+    deleteAPIKey: (id: string) => Promise<void>;
+
+    // Settings
+    settings: { latency_threshold: string } | null;
+    fetchSettings: () => Promise<void>;
+    updateSettings: (settings: { latency_threshold: string }) => Promise<void>;
 }
 
 export const useMonitorStore = create<MonitorStore>((set, get) => ({
@@ -120,6 +134,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     channels: [],
     user: null,
     isAuthChecked: false,
+    settings: null,
 
     // ... (existing actions)
 
@@ -388,6 +403,16 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     addChannel: (channel) => set((state) => ({
         channels: [...state.channels, { ...channel, id: Math.random().toString(36).substr(2, 9) }]
     })),
+    resolveIncident: (id) => set((state) => ({
+        incidents: state.incidents.map(inc => inc.id === id ? { ...inc, status: 'resolved' as const } : inc)
+    })),
+    updateChannel: (id, updates) => set((state) => ({
+        channels: state.channels.map(ch => ch.id === id ? { ...ch, ...updates } : ch)
+    })),
+    deleteChannel: (id) => set((state) => ({
+        channels: state.channels.filter(ch => ch.id !== id)
+    })),
+
     fetchAPIKeys: async () => {
         try {
             const res = await fetch("/api/api-keys", { credentials: "include" });
@@ -445,5 +470,31 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             console.error("Failed to reset database:", error);
         }
         return false;
+    },
+
+    fetchSettings: async () => {
+        try {
+            const res = await fetch('/api/settings', { credentials: 'include' });
+            if (res.ok) {
+                const settings = await res.json();
+                set({ settings });
+            }
+        } catch (error) {
+            console.error('Failed to fetch settings:', error);
+        }
+    },
+
+    updateSettings: async (newSettings) => {
+        try {
+            await fetch('/api/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newSettings),
+                credentials: 'include'
+            });
+            set({ settings: newSettings });
+        } catch (error) {
+            console.error('Failed to update settings:', error);
+        }
     }
 }));
