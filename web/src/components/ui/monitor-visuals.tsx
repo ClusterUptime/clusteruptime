@@ -29,9 +29,21 @@ export const StatusBadge = ({ status }: { status: Monitor['status'] }) => {
 };
 
 export const UptimeHistory = ({ history }: { history: Monitor['history'] }) => {
+    // Check if history is null/undefined and default to empty array
+    // Also, if it's empty, we might want to render placeholders? 
+    // For now, let's just properly map over a safe array.
+    const safeHistory = history || [];
+
+    // If it's a new monitor, it might have no history. Let's render empty slots or just nothing?
+    // User asked: "rellena con algo diferner" (fill with something different).
+    // Let's ensure we display something so layout doesn't collapse.
+    // If empty, let's create an array of "empty" states?
+    // Actually, backend should return empty array, but it returning null is the bug.
+    // Let's just fix the crash first.
+
     return (
         <div className="flex gap-[2px] h-8 items-end w-full max-w-[200px] sm:max-w-none" title="Last 20 checks">
-            {history.map((status, i) => (
+            {safeHistory.map((status, i) => (
                 <div
                     key={i}
                     className={cn(

@@ -142,7 +142,22 @@ func (h *AuthHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Check Cookie
+		// 1. Check Bearer Token (API Key)
+		authHeader := r.Header.Get("Authorization")
+		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+			token := authHeader[7:]
+			valid, err := h.store.ValidateAPIKey(token)
+			if err == nil && valid {
+				// Valid API Key. Identify as generic API user or specific if linked.
+				// For now, API Key grants full access.
+				// We can inject a special Context value to indicate API Key usage.
+				ctx := context.WithValue(r.Context(), "userID", int64(0)) // 0 or -1 to indicate API User
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+		}
+
+		// 2. Check Cookie
 		c, err := r.Cookie("auth_token")
 		if err != nil {
 			// No cookie
@@ -150,14 +165,14 @@ func (h *AuthHandler) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// 2. Validate Session
+		// 3. Validate Session
 		sess, err := h.store.GetSession(c.Value)
 		if err != nil || sess == nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		// 3. Inject UserID into Context
+		// 4. Inject UserID into Context
 		ctx := context.WithValue(r.Context(), "userID", sess.UserID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

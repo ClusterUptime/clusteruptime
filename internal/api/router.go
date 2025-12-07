@@ -64,6 +64,17 @@ func NewRouter(manager *uptime.Manager, store *db.Store) http.Handler {
 			// Status Pages Management
 			protected.Get("/status-pages", statusPageH.GetAll)
 			protected.Patch("/status-pages/{slug}", statusPageH.Toggle)
+
+			// API Keys
+			apiKeyH := NewAPIKeyHandler(store)
+			protected.Get("/api-keys", apiKeyH.ListKeys)
+			protected.Post("/api-keys", apiKeyH.CreateKey)
+			protected.Post("/api-keys", apiKeyH.CreateKey)
+			protected.Delete("/api-keys/{id}", apiKeyH.DeleteKey)
+
+			// Admin
+			adminH := NewAdminHandler(store, manager)
+			protected.Post("/admin/reset", adminH.ResetDatabase)
 		})
 	})
 

@@ -95,11 +95,21 @@ function MonitorGroup({ group }: { group: any }) {
 
 function Dashboard() {
   const { groupId } = useParams();
-  const { groups } = useMonitorStore();
+  const { groups, fetchMonitors } = useMonitorStore();
+  const safeGroups = groups || [];
 
   const displayedGroups = groupId
-    ? groups.filter(g => g.id === groupId)
-    : groups;
+    ? safeGroups.filter(g => g.id === groupId)
+    : safeGroups;
+
+  // Poll for updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchMonitors();
+    }, 2000); // 2 seconds
+
+    return () => clearInterval(interval);
+  }, [fetchMonitors]);
 
   return (
     <div className="space-y-6">
@@ -114,6 +124,8 @@ function AdminLayout() {
   const { groups, addGroup, addMonitor, addIncident, user, isAuthChecked } = useMonitorStore();
   const location = useLocation();
   const navigate = useNavigate();
+
+  const safeGroups = groups || [];
 
   // Route Guard
   if (!isAuthChecked) {
@@ -135,7 +147,7 @@ function AdminLayout() {
   const isNotifications = location.pathname === '/notifications';
   const isSettings = location.pathname === '/settings';
   const groupId = location.pathname.startsWith('/groups/') ? location.pathname.split('/')[2] : null;
-  const activeGroup = groupId ? groups.find(g => g.id === groupId) : null;
+  const activeGroup = groupId ? safeGroups.find(g => g.id === groupId) : null;
 
   const pageTitle = isIncidents
     ? "Incidents & Maintenance"
@@ -145,12 +157,12 @@ function AdminLayout() {
         ? "Settings"
         : (activeGroup ? activeGroup.name : "All Groups");
 
-  const existingGroupNames = groups.map(g => g.name);
+  const existingGroupNames = safeGroups.map(g => g.name);
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-[#020617] text-slate-100">
-        <AppSidebar groups={groups} />
+        <AppSidebar groups={safeGroups} />
         <SidebarInset className="flex-1 flex flex-col min-w-0">
           <header className="flex h-14 items-center gap-4 border-b border-slate-800 bg-[#020617]/50 px-6 backdrop-blur sticky top-0 z-10">
             <div className="font-semibold">{pageTitle}</div>

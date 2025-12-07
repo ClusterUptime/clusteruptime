@@ -7,6 +7,66 @@ import { Separator } from "@/components/ui/separator";
 import { useState } from "react";
 import { useMonitorStore } from "@/lib/store";
 import { useToast } from "@/components/ui/use-toast";
+import { APIKeysView } from "./APIKeysView";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+
+function ResetDatabaseDialog() {
+    const { resetDatabase } = useMonitorStore();
+    const { toast } = useToast();
+    const [open, setOpen] = useState(false);
+
+    const handleReset = async () => {
+        const success = await resetDatabase();
+        setOpen(false);
+        if (success) {
+            toast({ title: "System Reset", description: "Database has been reset. Redirecting..." });
+            window.location.reload();
+        } else {
+            toast({ title: "Error", description: "Failed to reset database", variant: "destructive" });
+        }
+    };
+
+    return (
+        <div className="flex items-center justify-between">
+            <div className="space-y-1">
+                <Label className="text-base text-red-400">Reset Database</Label>
+                <p className="text-sm text-muted-foreground">
+                    Permanently delete all data (monitors, history, users) and restore defaults.
+                </p>
+            </div>
+            <AlertDialog open={open} onOpenChange={setOpen}>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive">Reset Everything</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete your
+                            account and remove your data from our servers.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-slate-800 text-white hover:bg-slate-700 hover:text-white border-slate-700">Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleReset} className="bg-red-600 hover:bg-red-700 text-white">
+                            Reset Everything
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </div>
+    );
+}
 
 export function SettingsView() {
     const { user, updateUser } = useMonitorStore();
@@ -108,6 +168,20 @@ export function SettingsView() {
                             </div>
                             <Button variant="outline" size="sm" disabled>Enabled</Button>
                         </div>
+                    </CardContent>
+                </Card>
+
+                <APIKeysView />
+
+                <Card className="bg-red-950/10 border-red-900/50">
+                    <CardHeader>
+                        <CardTitle className="text-red-500">Danger Zone</CardTitle>
+                        <CardDescription className="text-red-400/60">
+                            Destructive actions that cannot be undone.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <ResetDatabaseDialog />
                     </CardContent>
                 </Card>
             </div>

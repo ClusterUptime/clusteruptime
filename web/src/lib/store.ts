@@ -89,6 +89,12 @@ interface MonitorStore {
     fetchStatusPages: () => Promise<StatusPage[]>;
     toggleStatusPage: (slug: string, publicStatus: boolean, title?: string, groupId?: string) => Promise<void>;
     fetchPublicStatusBySlug: (slug: string) => Promise<any>;
+
+    // API Keys
+    fetchAPIKeys: () => Promise<APIKey[]>;
+    createAPIKey: (name: string) => Promise<string | null>;
+    deleteAPIKey: (id: number) => Promise<void>;
+    resetDatabase: () => Promise<boolean>;
 }
 
 export interface StatusPage {
@@ -98,6 +104,14 @@ export interface StatusPage {
     groupId?: string;
     public: boolean;
     createdAt: string;
+}
+
+export interface APIKey {
+    id: number;
+    keyPrefix: string;
+    name: string;
+    createdAt: string;
+    lastUsed?: string;
 }
 
 export const useMonitorStore = create<MonitorStore>((set, get) => ({
@@ -227,9 +241,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             if (res.ok) {
                 const data = await res.json();
                 // Backend now returns { groups: [...] }
-                if (data.groups) {
-                    set({ groups: data.groups });
-                }
+                set({ groups: data.groups || [] });
             }
         } catch (e) {
             console.error("Failed to fetch monitors", e);
@@ -376,6 +388,62 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     addChannel: (channel) => set((state) => ({
         channels: [...state.channels, { ...channel, id: Math.random().toString(36).substr(2, 9) }]
     })),
-    updateChannel: (id, updates) => { },
-    deleteChannel: (id) => { }
+    fetchAPIKeys: async () => {
+        try {
+            const res = await fetch("/api/api-keys", { credentials: "include" });
+            if (res.ok) {
+                const data = await res.json();
+                return data.keys || [];
+            }
+        } catch (error) {
+            console.error("Failed to fetch API keys:", error);
+        }
+        return [];
+    },
+
+    createAPIKey: async (name: string) => {
+        try {
+            const res = await fetch("/api/api-keys", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name }),
+                credentials: "include"
+            });
+            if (res.ok) {
+                const data = await res.json();
+                return data.key;
+            }
+        } catch (error) {
+            console.error("Failed to create API key:", error);
+        }
+        return null;
+    },
+
+    deleteAPIKey: async (id: number) => {
+        try {
+            await fetch(`/api/api-keys/${id}`, {
+                method: "DELETE",
+                credentials: "include"
+            });
+        } catch (error) {
+            console.error("Failed to delete API key:", error);
+        }
+    },
+
+    resetDatabase: async () => {
+        try {
+            const res = await fetch("/api/admin/reset", {
+                method: "POST",
+                credentials: "include"
+            });
+            if (res.ok) {
+                // Force logout cleanup on frontend
+                get().logout();
+                return true;
+            }
+        } catch (error) {
+            console.error("Failed to reset database:", error);
+        }
+        return false;
+    }
 }));
