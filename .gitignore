@@ -22,6 +22,8 @@ go.work
 # Web
 web/node_modules/
 web/dist/
+internal/static/dist/*
+!internal/static/dist/.gitkeep
 web/.env.local
 web/.env.development.local
 web/.env.test.local
