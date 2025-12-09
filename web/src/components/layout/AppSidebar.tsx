@@ -11,13 +11,13 @@ import {
     Calendar,
     Command,
     Frame,
+    LayoutDashboard,
     LifeBuoy,
     Map,
     PieChart,
     Send,
     Settings2,
     Siren,
-    Terminal,
     Zap,
 } from "lucide-react"
 
@@ -47,16 +47,16 @@ export function AppSidebar({ groups, ...props }: React.ComponentProps<typeof Sid
         },
         navMain: [
             {
-                title: "Dashboards",
+                title: "Overview",
                 url: "/dashboard",
-                icon: Terminal,
+                icon: LayoutDashboard,
                 isActive: pathname === "/dashboard",
-                items: [
-                    {
-                        title: "Overview",
-                        url: "/dashboard",
-                    },
-                ],
+            },
+            {
+                title: "Status Pages",
+                url: "/status-pages",
+                icon: Activity,
+                isActive: pathname === "/status-pages",
             },
             {
                 title: "Events",
@@ -76,17 +76,8 @@ export function AppSidebar({ groups, ...props }: React.ComponentProps<typeof Sid
                     },
                 ],
             },
-            {
-                title: "Status Pages",
-                url: "/status-pages",
-                icon: Activity,
-                items: [
-                    {
-                        title: "Manage Pages",
-                        url: "/status-pages",
-                    },
-                ],
-            },
+        ],
+        navSettings: [
             {
                 title: "Settings",
                 url: "/settings",
@@ -132,7 +123,7 @@ export function AppSidebar({ groups, ...props }: React.ComponentProps<typeof Sid
                 </SidebarMenu>
             </SidebarHeader>
             <SidebarContent>
-                <NavMain items={data.navMain} groups={groups} />
+                <NavMain items={data.navMain} groups={groups} settings={data.navSettings} />
                 <NavSecondary items={data.navSecondary} className="mt-auto" />
             </SidebarContent>
             <SidebarFooter>
