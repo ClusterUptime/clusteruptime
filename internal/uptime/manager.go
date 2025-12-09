@@ -107,6 +107,17 @@ func (m *Manager) Stop() {
 	// m.wg.Wait() // Optional: strictly wait or just let app exit
 }
 
+// Reset stops all monitors and clears the map. Used before DB reset.
+func (m *Manager) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, mon := range m.monitors {
+		mon.Stop()
+		delete(m.monitors, id)
+	}
+}
+
 func (m *Manager) worker() {
 	defer m.wg.Done()
 	client := &http.Client{

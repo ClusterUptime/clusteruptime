@@ -13,6 +13,17 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/monitor-visuals";
 import { Trash2, Save, Activity, Clock } from "lucide-react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface MonitorDetailsSheetProps {
     monitor: Monitor;
@@ -28,13 +39,6 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
     const handleSave = () => {
         updateMonitor(monitor.id, { name, url });
         onOpenChange(false);
-    };
-
-    const handleDelete = () => {
-        if (confirm("Are you sure you want to delete this monitor?")) {
-            deleteMonitor(monitor.id);
-            onOpenChange(false);
-        }
     };
 
     return (
@@ -65,7 +69,7 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                                 {monitor.events.map((event) => (
                                     <div key={event.id} className="ml-6 relative">
                                         <div className={`absolute -left-[31px] top-1 w-2.5 h-2.5 rounded-full ring-4 ring-slate-950 ${event.type === 'up' ? 'bg-green-500' :
-                                                event.type === 'down' ? 'bg-red-500' : 'bg-yellow-500'
+                                            event.type === 'down' ? 'bg-red-500' : 'bg-yellow-500'
                                             }`} />
                                         <div className="flex flex-col gap-1">
                                             <span className="text-xs text-slate-500 flex items-center gap-1">
@@ -104,11 +108,37 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                             <p className="text-xs text-slate-500 mb-4">
                                 Deleting this monitor is irreversible. All history will be lost.
                             </p>
-                            <Button variant="destructive" onClick={handleDelete} className="w-full bg-red-900/50 hover:bg-red-900 text-red-200 border border-red-900">
-                                <Trash2 className="w-4 h-4 mr-2" /> Delete Monitor
-                            </Button>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" className="w-full bg-red-900/50 hover:bg-red-900 text-red-200 border border-red-900">
+                                        <Trash2 className="w-4 h-4 mr-2" /> Delete Monitor
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="bg-slate-950 border-slate-800 text-slate-100">
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                        <AlertDialogDescription className="text-slate-400">
+                                            This action cannot be undone. This will permanently delete the monitor
+                                            <strong> {monitor.name} </strong> and remove all its data.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel className="bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-200">Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                            onClick={() => {
+                                                deleteMonitor(monitor.id);
+                                                onOpenChange(false);
+                                            }}
+                                            className="bg-red-600 hover:bg-red-700 text-white border-none"
+                                        >
+                                            Delete Monitor
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
                         </div>
                     </TabsContent>
+
                 </Tabs>
             </SheetContent>
         </Sheet>

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { toast } from "@/components/ui/use-toast";
 
 export interface MonitorEvent {
     id: string;
@@ -311,9 +312,11 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             });
             if (res.ok) {
                 get().fetchMonitors();
+                toast({ title: "Group Created", description: `Group "${name}" created successfully.` });
             }
         } catch (e) {
             console.error(e);
+            toast({ title: "Error", description: "Failed to create group.", variant: "destructive" });
         }
     },
 
@@ -325,9 +328,11 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             });
             if (res.ok) {
                 get().fetchMonitors();
+                toast({ title: "Group Deleted", description: "Group deleted successfully." });
             }
         } catch (e) {
             console.error(e);
+            toast({ title: "Error", description: "Failed to delete group.", variant: "destructive" });
         }
     },
 
@@ -375,9 +380,11 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             });
             if (res.ok) {
                 get().fetchMonitors();
+                toast({ title: "Monitor Created", description: `Monitor "${name}" created successfully.` });
             }
         } catch (e) {
             console.error(e);
+            toast({ title: "Error", description: "Failed to create monitor.", variant: "destructive" });
         }
     },
 
@@ -391,9 +398,11 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             });
             if (res.ok) {
                 get().fetchMonitors();
+                toast({ title: "Monitor Deleted", description: "Monitor deleted successfully." });
             }
         } catch (e) {
             console.error(e);
+            toast({ title: "Error", description: "Failed to delete monitor.", variant: "destructive" });
         }
     },
 

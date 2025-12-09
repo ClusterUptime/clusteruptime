@@ -36,9 +36,9 @@ type Session struct {
 }
 
 type Group struct {
-	ID        string
-	Name      string
-	CreatedAt time.Time
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 func NewStore(dbPath string) (*Store, error) {
@@ -204,12 +204,12 @@ func (s *Store) DeleteGroup(id string) error {
 // Monitor CRUD
 
 type Monitor struct {
-	ID        string
-	GroupID   string
-	Name      string
-	URL       string
-	Active    bool
-	CreatedAt time.Time
+	ID        string    `json:"id"`
+	GroupID   string    `json:"groupId"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	Active    bool      `json:"active"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 func (s *Store) CreateMonitor(m Monitor) error {
@@ -249,11 +249,11 @@ func (s *Store) DeleteMonitor(id string) error {
 }
 
 type CheckResult struct {
-	MonitorID  string
-	Status     string
-	Latency    int64
-	Timestamp  time.Time
-	StatusCode int
+	MonitorID  string    `json:"monitorId"`
+	Status     string    `json:"status"`
+	Latency    int64     `json:"latency"`
+	Timestamp  time.Time `json:"timestamp"`
+	StatusCode int       `json:"statusCode"`
 }
 
 func (s *Store) BatchInsertChecks(checks []CheckResult) error {
@@ -334,11 +334,11 @@ func (s *Store) seed() error {
 
 	if groupCount == 0 {
 		log.Println("Seeding default group...")
-		_, err := s.db.Exec("INSERT INTO groups (id, name) VALUES (?, ?)", "default", "Default")
+		_, err := s.db.Exec("INSERT INTO groups (id, name) VALUES (?, ?)", "g-default", "Default")
 		if err != nil {
 			return err
 		}
-		log.Println("Default group 'Default' (id: default) created")
+		log.Println("Default group 'Default' (id: g-default) created")
 	}
 
 	// Seed Monitors
@@ -351,7 +351,7 @@ func (s *Store) seed() error {
 	if monitorCount == 0 {
 		log.Println("Seeding default monitor...")
 		_, err := s.db.Exec("INSERT INTO monitors (id, group_id, name, url, active) VALUES (?, ?, ?, ?, ?)",
-			"m1", "default", "Example Monitor", "https://google.com", true)
+			"m-example-monitor-default", "g-default", "Example Monitor", "https://google.com", true)
 		if err != nil {
 			return err
 		}
@@ -631,11 +631,11 @@ func (s *Store) ValidateAPIKey(key string) (bool, error) {
 }
 
 type MonitorEvent struct {
-	ID        int
-	MonitorID string
-	Type      string
-	Message   string
-	Timestamp time.Time
+	ID        int       `json:"id"`
+	MonitorID string    `json:"monitorId"`
+	Type      string    `json:"type"`
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 func (s *Store) GetMonitorEvents(monitorID string, limit int) ([]MonitorEvent, error) {

@@ -14,6 +14,15 @@ import {
     SheetClose,
 } from "@/components/ui/sheet";
 
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+// ... existing imports
+
 interface CreateMonitorSheetProps {
     onCreate: (name: string, url: string, group: string) => void;
     groups: string[];
@@ -23,19 +32,28 @@ export function CreateMonitorSheet({ onCreate, groups }: CreateMonitorSheetProps
     const [name, setName] = useState("");
     const [url, setUrl] = useState("");
     const [group, setGroup] = useState("");
+    const [isNewGroup, setIsNewGroup] = useState(false);
     const [open, setOpen] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name || !url) return;
-
         onCreate(name, url, group);
-
         // Reset
         setName("");
         setUrl("");
         setGroup("");
+        setIsNewGroup(false);
         setOpen(false);
+    };
+
+    const handleGroupChange = (value: string) => {
+        if (value === "___create_new___") {
+            setIsNewGroup(true);
+            setGroup("");
+        } else {
+            setGroup(value);
+        }
     };
 
     return (
@@ -77,20 +95,54 @@ export function CreateMonitorSheet({ onCreate, groups }: CreateMonitorSheetProps
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="group" className="text-slate-200">Group / Project</Label>
-                        <Input
-                            id="group"
-                            placeholder="Default"
-                            list="existing-groups"
-                            className="bg-slate-900 border-slate-800 focus-visible:ring-blue-600"
-                            value={group}
-                            onChange={(e) => setGroup(e.target.value)}
-                        />
-                        <datalist id="existing-groups">
-                            {groups.map(g => <option key={g} value={g} />)}
-                        </datalist>
-                        <p className="text-[0.8rem] text-slate-500">
-                            Leave empty to use "Default". Typing a new name will create a new group.
-                        </p>
+                        {isNewGroup ? (
+                            <div className="flex gap-2">
+                                <Input
+                                    id="group"
+                                    placeholder="Enter new group name"
+                                    className="bg-slate-900 border-slate-800 focus-visible:ring-blue-600"
+                                    value={group}
+                                    onChange={(e) => setGroup(e.target.value)}
+                                    autoFocus
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setIsNewGroup(false)}
+                                    className="border-slate-800 text-slate-400"
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+                        ) : (
+                            <Select onValueChange={handleGroupChange} value={group}>
+                                <SelectTrigger className="bg-slate-900 border-slate-800 text-slate-100">
+                                    <SelectValue placeholder="Select a group" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-950 border-slate-800 text-slate-100">
+                                    {groups.length > 0 ? (
+                                        groups.map((g) => (
+                                            <SelectItem key={g} value={g} className="focus:bg-slate-900 focus:text-slate-100 cursor-pointer">
+                                                {g}
+                                            </SelectItem>
+                                        ))
+                                    ) : (
+                                        <SelectItem value="default" disabled className="text-slate-500">
+                                            No groups found
+                                        </SelectItem>
+                                    )}
+                                    <div className="h-px bg-slate-800 my-1" />
+                                    <SelectItem value="___create_new___" className="text-blue-400 focus:text-blue-300 focus:bg-slate-900 cursor-pointer">
+                                        + Create New Group
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        )}
+                        {!isNewGroup && (
+                            <p className="text-[0.8rem] text-slate-500">
+                                Select an existing group or create a new one.
+                            </p>
+                        )}
                     </div>
                     <SheetFooter className="mt-4">
                         <SheetClose asChild>

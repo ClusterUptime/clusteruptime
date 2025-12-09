@@ -150,9 +150,10 @@ func (h *StatusPageHandler) GetPublicStatus(w http.ResponseWriter, r *http.Reque
 				history := task.GetHistory()
 				if len(history) > 0 {
 					last := history[len(history)-1]
+					threshold := h.manager.GetLatencyThreshold()
 					if last.IsUp {
 						statusStr = "up"
-						if last.Latency > 500 {
+						if last.Latency > threshold {
 							statusStr = "degraded"
 						}
 					}
@@ -163,7 +164,7 @@ func (h *StatusPageHandler) GetPublicStatus(w http.ResponseWriter, r *http.Reque
 						s := "down"
 						if h.IsUp {
 							s = "up"
-							if h.Latency > 500 {
+							if h.Latency > threshold {
 								s = "degraded"
 							}
 						}

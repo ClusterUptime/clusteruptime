@@ -1,8 +1,12 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/clusteruptime/clusteruptime/internal/db"
 	"github.com/clusteruptime/clusteruptime/internal/uptime"
@@ -16,6 +20,31 @@ type CRUDHandler struct {
 
 func NewCRUDHandler(store *db.Store, manager *uptime.Manager) *CRUDHandler {
 	return &CRUDHandler{store: store, manager: manager}
+}
+
+// generateID creates a slug + hash ID from a name
+// e.g. "My Group" -> "g-my-group-a1b2c3"
+func generateID(name, prefix string) string {
+	slug := generateSlug(name, prefix)
+
+	// 2. Generate random suffix (3 bytes = 6 hex chars)
+	b := make([]byte, 3)
+	if _, err := rand.Read(b); err != nil {
+		return slug + "-rnd"
+	}
+	hash := hex.EncodeToString(b)
+
+	return slug + "-" + hash
+}
+
+// generateSlug creates a clean slug ID from a name without hash
+// e.g. "My Group" -> "g-my-group"
+func generateSlug(name, prefix string) string {
+	slug := strings.ToLower(name)
+	slug = strings.ReplaceAll(slug, " ", "-")
+	reg := regexp.MustCompile("[^a-z0-9-]+")
+	slug = reg.ReplaceAllString(slug, "")
+	return prefix + slug
 }
 
 func (h *CRUDHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
@@ -32,23 +61,19 @@ func (h *CRUDHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate ID (simple UUID-like or timestamp for now, or nice slug)
-	// For simplicity, let's just use Name as ID if simple, or random.
-	// Let's use a random ID generator helper if we had one, but strict requirements not present.
-	// Using "g-" + timestamp for uniqueness in this MVP.
-	id := "g-" + req.Name // Simple ID generation
-
-	// Better: Use a random string
-	// But let's assume client might send ID? No, server gen.
-	// Importing UUID package adds dependency. Let's stick to time-based for MVP without deps.
-	// Or just use existing store logic if it accepted ID. Store expects ID.
+	id := generateSlug(req.Name, "g-")
 
 	g := db.Group{
-		ID:   id, // weak ID, but works for demo
+		ID:   id,
 		Name: req.Name,
 	}
 
 	if err := h.store.CreateGroup(g); err != nil {
+		// Handle Duplicate ID error
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "duplicate key") {
+			writeError(w, http.StatusConflict, "Group with this name already exists (ID: "+id+")")
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -81,8 +106,7 @@ func (h *CRUDHandler) CreateMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate ID
-	id := "m-" + req.Name // weak ID
+	id := generateID(req.Name, "m-")
 
 	m := db.Monitor{
 		ID:      id,
