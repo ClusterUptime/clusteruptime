@@ -8,7 +8,7 @@ import { useMonitorStore } from "./lib/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./components/ui/card";
 import { StatusBadge, UptimeHistory } from "./components/ui/monitor-visuals";
 import { Button } from "./components/ui/button";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, LayoutDashboard, ChevronRight } from "lucide-react";
 import { CreateMonitorSheet } from "./components/CreateMonitorSheet";
 import { CreateGroupSheet } from "./components/CreateGroupSheet";
 import { IncidentsView } from "./components/incidents/IncidentsView";
@@ -93,27 +93,123 @@ function MonitorGroup({ group }: { group: any }) {
   )
 }
 
-function Dashboard() {
-  const { groupId } = useParams();
-  const { groups, fetchMonitors } = useMonitorStore();
-  const safeGroups = groups || [];
+// New Lightweight Group Card for Overview
+// New Lightweight Group Card for Overview (Status Page Style)
+function GroupOverviewCard({ group }: { group: any }) {
+  const navigate = useNavigate();
 
-  const displayedGroups = groupId
-    ? safeGroups.filter(g => g.id === groupId)
-    : safeGroups;
+  const statusColor =
+    group.status === 'up' ? 'bg-green-500' :
+      group.status === 'degraded' ? 'bg-yellow-500' : 'bg-red-500';
 
-  // Poll for updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchMonitors();
-    }, 2000); // 2 seconds
+  const statusText =
+    group.status === 'up' ? 'Operational' :
+      group.status === 'degraded' ? 'Degraded' : 'Down';
 
-    return () => clearInterval(interval);
-  }, [fetchMonitors]);
+  const statusTextColor =
+    group.status === 'up' ? 'text-green-500' :
+      group.status === 'degraded' ? 'text-yellow-500' : 'text-red-500';
 
   return (
+    <Card
+      onClick={() => navigate(`/groups/${group.id}`)}
+      className="group relative flex flex-row items-center justify-between p-4 rounded-xl border-border/50 bg-card/50 hover:bg-accent/50 transition-all duration-300 cursor-pointer overflow-hidden gap-4 shadow-none"
+    >
+      {/* Hover Glow & Left Border */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 ${statusColor} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+
+      <div className="flex items-center gap-3 pl-2">
+        <div className="font-medium text-foreground group-hover:text-foreground transition-colors">
+          {group.name}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5">
+          <div className={`text-sm font-medium ${statusTextColor} transition-colors`}>
+            {statusText}
+          </div>
+          <div className="relative flex items-center justify-center">
+            {group.status !== 'up' && (
+              <span className={`absolute inline-flex h-full w-full rounded-full ${statusColor} opacity-75 animate-ping`} />
+            )}
+            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${statusColor}`} />
+          </div>
+        </div>
+
+        <div className="pl-2 border-l border-border/50">
+          <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all duration-300" />
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function Dashboard() {
+  const { groupId } = useParams();
+  const { groups, overview, fetchMonitors, fetchOverview } = useMonitorStore();
+  const safeGroups = groups || [];
+
+  // Poll for updates based on view
+  useEffect(() => {
+    // Initial fetch
+    if (groupId) {
+      fetchMonitors(groupId);
+    } else {
+      fetchOverview();
+    }
+
+    const interval = setInterval(() => {
+      if (groupId) {
+        fetchMonitors(groupId);
+      } else {
+        fetchOverview();
+      }
+    }, 60000); // 60 seconds
+
+    return () => clearInterval(interval);
+  }, [fetchMonitors, fetchOverview, groupId]);
+
+  if (!groupId) {
+    // Overview Mode
+    const safeOverview = overview || [];
+    const downGroups = safeOverview.filter(g => g.status === 'down').length;
+    const degradedGroups = safeOverview.filter(g => g.status === 'degraded').length;
+    const isHealthy = downGroups === 0 && degradedGroups === 0;
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">
+            {isHealthy ? "All Systems Operational" : "System Issues Detected"}
+          </h2>
+          <p className={`text-sm ${isHealthy ? 'text-muted-foreground' : 'text-red-400'}`}>
+            {isHealthy
+              ? `Monitoring ${safeOverview.length} check groups. Everything looks good.`
+              : `${downGroups} groups down, ${degradedGroups} degraded.`}
+          </p>
+        </div>
+
+        {safeOverview.length === 0 && (
+          <div className="text-center text-muted-foreground py-10 border border-border/50 rounded-xl bg-slate-900/20">
+            No groups found. Create one to get started.
+          </div>
+        )}
+        <div className="grid gap-3">
+          {safeOverview.map(group => (
+            <GroupOverviewCard key={group.id} group={group} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Detail Mode (Single Group)
+  // We filter from 'groups' state which should now contain only this group's data (populated by fetchMonitors(groupId))
+  // However, fetchMonitors replaces the whole 'groups' array.
+  return (
     <div className="space-y-8">
-      {displayedGroups.map(group => (
+      {safeGroups.map(group => (
         <MonitorGroup key={group.id} group={group} />
       ))}
     </div>
@@ -121,9 +217,14 @@ function Dashboard() {
 }
 
 function AdminLayout() {
-  const { groups, addGroup, addMonitor, addIncident, user, isAuthChecked } = useMonitorStore();
+  const { groups, overview, fetchOverview, addGroup, addMonitor, addIncident, user, isAuthChecked } = useMonitorStore();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Ensure overview is loaded for Sidebar
+  useEffect(() => {
+    fetchOverview();
+  }, []);
 
   const safeGroups = groups || [];
 
@@ -146,8 +247,12 @@ function AdminLayout() {
   const isIncidents = location.pathname === '/incidents';
   const isNotifications = location.pathname === '/notifications';
   const isSettings = location.pathname === '/settings';
+  const isStatusPages = location.pathname === '/status-pages';
+  const isApiKeys = location.pathname === '/api-keys';
   const groupId = location.pathname.startsWith('/groups/') ? location.pathname.split('/')[2] : null;
   const activeGroup = groupId ? safeGroups.find(g => g.id === groupId) : null;
+
+  const isDashboard = location.pathname === '/dashboard' || location.pathname === '/';
 
   const pageTitle = isIncidents
     ? "Incidents & Maintenance"
@@ -155,13 +260,17 @@ function AdminLayout() {
       ? "Notifications & Integrations"
       : isSettings
         ? "Settings"
-        : (activeGroup ? activeGroup.name : "All Groups");
+        : isStatusPages
+          ? "Status Pages"
+          : isApiKeys
+            ? "API Keys"
+            : (activeGroup ? activeGroup.name : "System Overview");
 
   const existingGroupNames = safeGroups.map(g => g.name);
 
   return (
     <SidebarProvider>
-      <AppSidebar groups={safeGroups} />
+      <AppSidebar groups={overview || safeGroups} />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-slate-800 bg-[#020617]/50 px-4 backdrop-blur sticky top-0 z-10 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2">

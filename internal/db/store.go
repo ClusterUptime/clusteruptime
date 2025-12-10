@@ -491,7 +491,7 @@ func (s *Store) DeleteSession(token string) error {
 }
 
 func (s *Store) GetGroups() ([]Group, error) {
-	rows, err := s.db.Query("SELECT id, name, created_at FROM groups ORDER BY created_at ASC")
+	rows, err := s.db.Query("SELECT id, name, created_at FROM groups ORDER BY name COLLATE NOCASE ASC")
 	if err != nil {
 		return nil, err
 	}
@@ -742,6 +742,47 @@ func (s *Store) GetMonitorEvents(monitorID string, limit int) ([]MonitorEvent, e
 	for rows.Next() {
 		var e MonitorEvent
 		if err := rows.Scan(&e.ID, &e.MonitorID, &e.Type, &e.Message, &e.Timestamp); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
+}
+
+type SystemEvent struct {
+	ID          int64     `json:"id"`
+	MonitorID   string    `json:"monitorId"`
+	MonitorName string    `json:"monitorName"`
+	Type        string    `json:"type"` // up, down, degraded
+	Message     string    `json:"message"`
+	Timestamp   time.Time `json:"timestamp"`
+}
+
+// GetSystemEvents returns all events for all monitors
+func (s *Store) GetSystemEvents(limit int) ([]SystemEvent, error) {
+	query := `
+		SELECT e.id, e.monitor_id, m.name, e.type, e.message, e.timestamp
+		FROM monitor_events e
+		JOIN monitors m ON e.monitor_id = m.id
+		ORDER BY e.timestamp ASC
+	`
+	// Note: Fetching ASC to process timeline easily in code, or DESC for display?
+	// User needs logic to determine "Active" vs "Closed". ASC is better for state reconstruction.
+	// But let's verify if we want to limit?
+	// If we limit, we might miss the "start" of an incident.
+	// For now, let's fetch all (or a large safety limit) to build accurate history.
+	// If performance becomes an issue, we optimize later.
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []SystemEvent
+	for rows.Next() {
+		var e SystemEvent
+		if err := rows.Scan(&e.ID, &e.MonitorID, &e.MonitorName, &e.Type, &e.Message, &e.Timestamp); err != nil {
 			return nil, err
 		}
 		events = append(events, e)

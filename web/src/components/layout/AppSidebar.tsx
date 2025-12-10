@@ -33,9 +33,9 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Group, useMonitorStore } from "@/lib/store"
+import { Group, OverviewGroup, useMonitorStore } from "@/lib/store"
 
-export function AppSidebar({ groups, ...props }: React.ComponentProps<typeof Sidebar> & { groups: Group[] }) {
+export function AppSidebar({ groups, ...props }: React.ComponentProps<typeof Sidebar> & { groups: (Group | OverviewGroup)[] }) {
     const { user } = useMonitorStore();
     const { pathname, search } = useLocation();
 

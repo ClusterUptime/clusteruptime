@@ -17,7 +17,7 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Group } from "@/lib/store"
+import { Group, OverviewGroup } from "@/lib/store"
 import { useLocation, Link } from "react-router-dom"
 
 export function NavMain({
@@ -35,7 +35,7 @@ export function NavMain({
       url: string
     }[]
   }[]
-  groups: Group[]
+  groups: (Group | OverviewGroup)[]
   settings?: {
     title: string
     url: string

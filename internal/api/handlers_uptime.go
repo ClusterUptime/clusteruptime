@@ -69,6 +69,16 @@ type GroupDTO struct {
 	Monitors []MonitorDTO `json:"monitors"`
 }
 
+type GroupOverviewDTO struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"` // up, down, degraded
+}
+
+type OverviewResponse struct {
+	Groups []GroupOverviewDTO `json:"groups"`
+}
+
 type UptimeResponse struct {
 	Groups []GroupDTO `json:"groups"`
 }
@@ -95,8 +105,12 @@ func (h *UptimeHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Construct Response
 	var groupDTOs []GroupDTO
+	filterGroupID := r.URL.Query().Get("group_id")
 
 	for _, g := range groups {
+		if filterGroupID != "" && g.ID != filterGroupID {
+			continue
+		}
 		monitorDTOs := []MonitorDTO{} // Ensure initialized as empty slice, not nil
 
 		for _, meta := range groupMap[g.ID] {
@@ -229,4 +243,70 @@ func (h *UptimeHandler) GetMonitorLatency(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(points)
+}
+
+func (h *UptimeHandler) GetOverview(w http.ResponseWriter, r *http.Request) {
+	groups, err := h.store.GetGroups()
+	if err != nil {
+		http.Error(w, "Failed to load groups", http.StatusInternalServerError)
+		return
+	}
+
+	monitorsMeta, err := h.store.GetMonitors()
+	if err != nil {
+		http.Error(w, "Failed to load monitors", http.StatusInternalServerError)
+		return
+	}
+
+	groupMap := make(map[string][]db.Monitor)
+	for _, m := range monitorsMeta {
+		groupMap[m.GroupID] = append(groupMap[m.GroupID], m)
+	}
+
+	var overview []GroupOverviewDTO
+	threshold := h.manager.GetLatencyThreshold()
+
+	for _, g := range groups {
+		monitors := groupMap[g.ID]
+		status := "up" // Default to up if no monitors or all up
+
+		if len(monitors) == 0 {
+			status = "up"
+		} else {
+			anyDown := false
+			anyDegraded := false
+
+			for _, m := range monitors {
+				if !m.Active {
+					continue
+				}
+				task := h.manager.GetMonitor(m.ID)
+				if task != nil {
+					isUp, latency, hasHistory, isDegraded := task.GetLastStatus()
+					if hasHistory && !isUp {
+						anyDown = true
+						break // Critical priority
+					}
+					if hasHistory && isUp && (isDegraded || latency > threshold) {
+						anyDegraded = true
+					}
+				}
+			}
+
+			if anyDown {
+				status = "down"
+			} else if anyDegraded {
+				status = "degraded"
+			}
+		}
+
+		overview = append(overview, GroupOverviewDTO{
+			ID:     g.ID,
+			Name:   g.Name,
+			Status: status,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(OverviewResponse{Groups: overview})
 }

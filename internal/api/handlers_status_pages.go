@@ -18,14 +18,84 @@ func NewStatusPageHandler(store *db.Store, manager *uptime.Manager) *StatusPageH
 	return &StatusPageHandler{store: store, manager: manager}
 }
 
-// Admin: Get all status page configs
+// Admin: Get all status page configs merged with groups
 func (h *StatusPageHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	// 1. Fetch Configured Pages
 	pages, err := h.store.GetStatusPages()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch status pages")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"pages": pages})
+
+	// 2. Fetch All Groups
+	groups, err := h.store.GetGroups()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch groups")
+		return
+	}
+
+	// 3. Construct Unified List
+	type StatusPageDTO struct {
+		Slug    string  `json:"slug"`
+		Title   string  `json:"title"`
+		GroupID *string `json:"groupId"`
+		Public  bool    `json:"public"`
+	}
+
+	var result []StatusPageDTO
+
+	// Map configured pages by GroupID (and handle Global "all")
+	configMap := make(map[string]db.StatusPage)
+	var globalPage *db.StatusPage
+
+	for _, p := range pages {
+		if p.Slug == "all" {
+			global := p // Copy
+			globalPage = &global
+		} else if p.GroupID != nil {
+			configMap[*p.GroupID] = p
+		}
+	}
+
+	// A. Global Page
+	globalPublic := false
+	if globalPage != nil {
+		globalPublic = globalPage.Public
+	}
+	result = append(result, StatusPageDTO{
+		Slug:    "all",
+		Title:   "Global Status",
+		GroupID: nil,
+		Public:  globalPublic,
+	})
+
+	// B. Group Pages
+	for _, g := range groups {
+		slug := "g-" + g.ID // default slug
+		title := g.Name
+		public := false
+
+		if cfg, ok := configMap[g.ID]; ok {
+			slug = cfg.Slug
+			title = cfg.Title
+			public = cfg.Public
+		}
+
+		// Simple slug generation if not configured
+		if !public && slug == "g-"+g.ID {
+			// We can optimize slug gen here or let frontend handle it/backend handle on create
+			// For listing, "g-{id}" is safe unique default if not set
+		}
+
+		result = append(result, StatusPageDTO{
+			Slug:    slug,
+			Title:   title,
+			GroupID: &g.ID,
+			Public:  public,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"pages": result})
 }
 
 // Admin: Toggle status page

@@ -79,7 +79,100 @@ interface MonitorStore {
 
     // CRUD
     fetchPublicStatus: () => Promise<void>;
-    fetchMonitors: () => Promise<void>;
+    fetchOverview: () => Promise<void>;
+    fetchMonitors: (groupId?: string) => Promise<void>;
+    addGroup: (name: string) => Promise<void>;
+    updateGroup: (id: string, name: string) => Promise<void>;
+    deleteGroup: (id: string) => Promise<void>;
+    addMonitor: (name: string, url: string, groupName: string, interval?: number) => Promise<void>;
+    updateMonitor: (id: string, updates: Partial<Monitor>) => void;
+    deleteMonitor: (id: string) => Promise<void>;
+
+    addIncident: (incident: Omit<Incident, 'id' | 'date'>) => void;
+    resolveIncident: (id: string) => void;
+    addChannel: (channel: Omit<NotificationChannel, 'id'>) => void;
+    updateChannel: (id: string, updates: Partial<NotificationChannel>) => void;
+    deleteChannel: (id: string) => void;
+
+    updateUser: (data: { password?: string; timezone?: string }) => Promise<void>;
+
+    // Status Pages
+    fetchStatusPages: () => Promise<StatusPage[]>;
+    toggleStatusPage: (slug: string, publicStatus: boolean, title?: string, groupId?: string) => Promise<void>;
+    fetchPublicStatusBySlug: (slug: string) => Promise<any>;
+
+    // API Keys
+    fetchAPIKeys: () => Promise<APIKey[]>;
+    createAPIKey: (name: string) => Promise<string | null>;
+    deleteAPIKey: (id: number) => Promise<void>;
+    resetDatabase: () => Promise<boolean>;
+
+    // Settings
+    settings: Settings | null;
+    fetchSettings: () => Promise<void>;
+    updateSettings: (settings: Partial<Settings>) => Promise<void>;
+
+    // State
+    overview: OverviewGroup[];
+}
+
+export interface OverviewGroup {
+    id: string;
+    name: string;
+    status: 'up' | 'down' | 'degraded';
+}
+
+export interface Settings {
+    latency_threshold: string;
+    data_retention_days: string;
+}
+
+export interface StatusPage {
+    id: number;
+    slug: string;
+    title: string;
+    groupId?: string;
+    public: boolean;
+    createdAt: string;
+}
+
+export interface SystemIncident {
+    id: string;
+    monitorId: string;
+    monitorName: string;
+    type: 'down' | 'degraded';
+    message: string;
+    startedAt: string;
+    resolvedAt?: string;
+}
+
+export interface APIKey {
+    id: number;
+    keyPrefix: string;
+    name: string;
+    createdAt: string;
+    lastUsed?: string;
+}
+
+interface MonitorStore {
+    groups: Group[];
+    overview: OverviewGroup[];
+    incidents: Incident[]; // Manual incidents
+    systemEvents: { active: SystemIncident[], history: SystemIncident[] }; // Auto events
+    channels: NotificationChannel[];
+    user: User | null;
+    isAuthChecked: boolean;
+
+    // Actions
+    checkAuth: () => Promise<void>;
+    login: (username: string, password: string) => Promise<boolean>;
+    logout: () => Promise<void>;
+
+    // CRUD
+    fetchPublicStatus: () => Promise<void>;
+    fetchOverview: () => Promise<void>;
+    fetchMonitors: (groupId?: string) => Promise<void>;
+    fetchSystemEvents: () => Promise<void>;
     addGroup: (name: string) => Promise<void>;
     updateGroup: (id: string, name: string) => Promise<void>;
     deleteGroup: (id: string) => Promise<void>;
@@ -112,45 +205,28 @@ interface MonitorStore {
     updateSettings: (settings: Partial<Settings>) => Promise<void>;
 }
 
-export interface Settings {
-    latency_threshold: string;
-    data_retention_days: string;
-}
-
-export interface StatusPage {
-    id: number;
-    slug: string;
-    title: string;
-    groupId?: string;
-    public: boolean;
-    createdAt: string;
-}
-
-export interface APIKey {
-    id: number;
-    keyPrefix: string;
-    name: string;
-    createdAt: string;
-    lastUsed?: string;
-    createAPIKey: (name: string) => Promise<string | null>;
-    deleteAPIKey: (id: string) => Promise<void>;
-
-    // Settings
-    settings: { latency_threshold: string } | null;
-    fetchSettings: () => Promise<void>;
-    updateSettings: (settings: { latency_threshold: string }) => Promise<void>;
-}
-
 export const useMonitorStore = create<MonitorStore>((set, get) => ({
     groups: [],
+    overview: [],
     incidents: [],
+    systemEvents: { active: [], history: [] },
     channels: [],
     user: null,
     isAuthChecked: false,
     settings: null,
 
-    // ... (existing actions)
-
+    // Actions
+    fetchSystemEvents: async () => {
+        try {
+            const res = await fetch("/api/events", { credentials: "include" });
+            if (res.ok) {
+                const data = await res.json();
+                set({ systemEvents: data });
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    },
     updateUser: async (data) => {
         try {
             const res = await fetch("/api/auth/me", {
@@ -216,8 +292,8 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                     },
                     isAuthChecked: true
                 });
-                // Once auth is confirmed, fetch private data
-                get().fetchMonitors();
+                // Once auth is confirmed, fetch overview for sidebar/dashboard
+                get().fetchOverview();
             } else {
                 set({ user: null, isAuthChecked: true });
             }
@@ -245,7 +321,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                         isAuthenticated: true
                     }
                 });
-                get().fetchMonitors();
+                get().fetchOverview();
                 return true;
             }
         } catch (e) {
@@ -263,9 +339,10 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         set({ user: null, groups: [] }); // Clear data on logout
     },
 
-    fetchMonitors: async () => {
+    fetchMonitors: async (groupId?: string) => {
         try {
-            const res = await fetch('/api/uptime', { credentials: 'include' });
+            const url = groupId ? `/api/uptime?group_id=${groupId}` : '/api/uptime';
+            const res = await fetch(url, { credentials: 'include' });
             if (res.ok) {
                 const data = await res.json();
                 // Backend now returns { groups: [...] }
@@ -273,6 +350,18 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             }
         } catch (e) {
             console.error("Failed to fetch monitors", e);
+        }
+    },
+
+    fetchOverview: async () => {
+        try {
+            const res = await fetch('/api/overview', { credentials: 'include' });
+            if (res.ok) {
+                const data = await res.json();
+                set({ overview: data.groups || [] });
+            }
+        } catch (e) {
+            console.error("Failed to fetch overview", e);
         }
     },
 
@@ -385,7 +474,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                 credentials: 'include'
             });
             if (res.ok) {
-                get().fetchMonitors();
+                get().fetchOverview();
                 toast({ title: "Group Deleted", description: "Group deleted successfully." });
             }
         } catch (e) {
@@ -426,7 +515,9 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                 credentials: 'include'
             });
             if (res.ok) {
-                get().fetchMonitors();
+                if (groupId) {
+                    get().fetchMonitors(groupId);
+                }
                 toast({ title: "Monitor Created", description: `Monitor "${name}" created successfully.` });
             }
         } catch (e) {
@@ -436,6 +527,17 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     },
 
     updateMonitor: async (id, updates) => {
+        // Find group ID for this monitor to refresh ONLY that group
+        const groups = get().groups;
+        let groupId: string | undefined;
+
+        for (const g of groups) {
+            if (g.monitors.some(m => m.id === id)) {
+                groupId = g.id;
+                break;
+            }
+        }
+
         try {
             const res = await fetch(`/api/monitors/${id}`, {
                 method: 'PUT',
@@ -444,7 +546,11 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                 credentials: 'include'
             });
             if (res.ok) {
-                get().fetchMonitors();
+                if (groupId) {
+                    get().fetchMonitors(groupId);
+                }
+                // Also refresh overview as status might change
+                get().fetchOverview();
                 toast({ title: "Monitor Updated", description: "Monitor details updated." });
             }
         } catch (e) {
@@ -454,13 +560,25 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     },
 
     deleteMonitor: async (id) => {
+        const groups = get().groups;
+        let groupId: string | undefined;
+        for (const g of groups) {
+            if (g.monitors.some(m => m.id === id)) {
+                groupId = g.id;
+                break;
+            }
+        }
+
         try {
             const res = await fetch(`/api/monitors/${id}`, {
                 method: 'DELETE',
                 credentials: 'include'
             });
             if (res.ok) {
-                get().fetchMonitors();
+                if (groupId) {
+                    get().fetchMonitors(groupId);
+                }
+                get().fetchOverview();
                 toast({ title: "Monitor Deleted", description: "Monitor deleted successfully." });
             }
         } catch (e) {

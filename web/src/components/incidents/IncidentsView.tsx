@@ -1,46 +1,113 @@
+
+import { useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useMonitorStore, Incident } from "@/lib/store";
-import { AlertCircle, Calendar, CheckCircle2 } from "lucide-react";
+import { useMonitorStore, Incident, SystemIncident } from "@/lib/store";
+import { Calendar, CheckCircle2, ArrowDownCircle, AlertTriangle, Clock } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 function IncidentCard({ incident }: { incident: Incident }) {
     const isMaintenance = incident.type === 'maintenance';
 
     return (
-        <Card className="bg-slate-900/20 border-slate-800">
-            <CardHeader>
-                <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            {isMaintenance ? <Calendar className="w-4 h-4 text-blue-400" /> : <AlertCircle className="w-4 h-4 text-red-500" />}
-                            {incident.title}
-                        </CardTitle>
-                        <CardDescription>{new Date(incident.startTime).toLocaleString()}</CardDescription>
-                    </div>
-                    <Badge variant={isMaintenance ? "secondary" : "destructive"} className="uppercase text-[10px]">
+        <div className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 transition-all duration-200">
+            <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                    {isMaintenance ? <Calendar className="w-4 h-4 text-blue-400" /> : <AlertTriangle className="w-4 h-4 text-red-500" />}
+                    <span className="font-medium text-foreground">{incident.title}</span>
+                    <Badge variant="outline" className={cn(
+                        "text-[10px] uppercase tracking-wider font-mono px-1.5 py-0 h-auto border-0",
+                        isMaintenance ? "bg-blue-500/10 text-blue-400" : "bg-red-500/10 text-red-500"
+                    )}>
                         {incident.status.replace('_', ' ')}
                     </Badge>
                 </div>
-            </CardHeader>
-            <CardContent>
-                <p className="text-sm text-slate-300 mb-4">{incident.description}</p>
-                <div className="text-xs text-slate-500">
-                    Affected: {incident.affectedGroups.join(", ")}
+                <div className="text-sm text-muted-foreground pl-7">
+                    {incident.description}
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+            <div className="text-right text-xs text-muted-foreground tabular-nums">
+                {new Date(incident.startTime).toLocaleString()}
+            </div>
+        </div>
+    )
+}
+
+function SystemEventRow({ event, active }: { event: SystemIncident; active: boolean }) {
+    const isDown = event.type === 'down';
+
+    // Minimalist Icon & Color Logic
+    const colorClass = isDown ? "text-red-500" : "text-yellow-500";
+    const bgBadge = isDown ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" : "bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20";
+
+    // Duration Calculation
+    let durationStr = "Just now";
+    if (active) {
+        // Active duration (roughly)
+        const start = new Date(event.startedAt).getTime();
+        const now = new Date().getTime();
+        const diffMins = Math.floor((now - start) / 60000);
+        durationStr = diffMins < 1 ? "Just now" : `${diffMins}m ongoing`;
+    } else if (event.resolvedAt) {
+        const diffMs = new Date(event.resolvedAt).getTime() - new Date(event.startedAt).getTime();
+        const mins = Math.floor(diffMs / 60000);
+        if (mins < 60) durationStr = `${mins}m`;
+        else durationStr = `${Math.floor(mins / 60)}h ${mins % 60}m`;
+    }
+
+    return (
+        <div className="group flex items-center justify-between py-3 px-4 -mx-4 hover:bg-muted/30 rounded-lg transition-colors">
+            <div className="flex items-center gap-4">
+                {/* Status Indicator Icon */}
+                <div className={cn("flex items-center justify-center w-8 h-8 rounded-full bg-background border border-border/50", active ? "shadow-sm" : "opacity-70")}>
+                    {isDown ? (
+                        <ArrowDownCircle className={cn("w-4 h-4", colorClass)} />
+                    ) : (
+                        <AlertTriangle className={cn("w-4 h-4", colorClass)} />
+                    )}
+                </div>
+
+                <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                        <span className={cn("font-medium text-sm text-foreground", !active && "text-muted-foreground line-through decoration-border")}>
+                            {event.monitorName}
+                        </span>
+                        {active && (
+                            <Badge variant="secondary" className={cn("rounded-sm px-1.5 py-0 text-[10px] font-medium uppercase tracking-wider border-0", bgBadge)}>
+                                {event.type}
+                            </Badge>
+                        )}
+                    </div>
+                    <div className="text-xs text-muted-foreground/70 font-mono">
+                        {event.message}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4 text-xs text-muted-foreground tabular-nums">
+                <span className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
+                    <Clock className="w-3 h-3" />
+                    {new Date(event.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <span className={cn("font-medium", active ? colorClass : "text-emerald-500")}>
+                    {durationStr}
+                </span>
+            </div>
+        </div>
     )
 }
 
 export function IncidentsView() {
-    const { incidents } = useMonitorStore();
+    const { incidents, systemEvents, fetchSystemEvents } = useMonitorStore();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const { pathname } = useLocation();
 
-    // Determine active tab based on URL path or query param
+    useEffect(() => {
+        fetchSystemEvents();
+    }, []);
+
     const currentTab = pathname === '/maintenance'
         ? 'maintenance'
         : (searchParams.get('tab') || 'active');
@@ -59,36 +126,107 @@ export function IncidentsView() {
     const maintenance = incidents.filter(i => i.type === 'maintenance' && i.status !== 'completed');
     const history = incidents.filter(i => i.status === 'resolved' || i.status === 'completed');
 
+    const activeSystemEvents = systemEvents?.active || [];
+    const historySystemEvents = systemEvents?.history || [];
+
+    // Split Active Events
+    const downtimeEvents = activeSystemEvents.filter(e => e.type === 'down');
+    const degradedEvents = activeSystemEvents.filter(e => e.type === 'degraded');
+
+    const totalActive = activeIncidents.length + activeSystemEvents.length;
+
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold tracking-tight">Events</h2>
+        <div className="space-y-8 max-w-5xl mx-auto">
+            <div className="flex items-center justify-between border-b border-border/40 pb-6">
+                <div>
+                    <h2 className="text-xl font-semibold tracking-tight text-foreground">System Events</h2>
+                    <p className="text-sm text-muted-foreground mt-1">Real-time system anomalies and maintenance schedule.</p>
+                </div>
             </div>
 
             <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
-                <TabsList className="bg-slate-900 border border-slate-800">
-                    <TabsTrigger value="active">Open Incidents ({activeIncidents.length})</TabsTrigger>
-                    <TabsTrigger value="maintenance">Scheduled ({maintenance.length})</TabsTrigger>
-                    <TabsTrigger value="history">History</TabsTrigger>
+                <TabsList className="bg-transparent border-b border-border/40 w-full justify-start h-auto p-0 space-x-6 rounded-none">
+                    <TabsTrigger
+                        value="active"
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent px-0 py-2 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground transition-all"
+                    >
+                        Active Issues
+                        {totalActive > 0 && <span className="ml-2 bg-red-500/10 text-red-500 text-[10px] px-1.5 py-0.5 rounded-full">{totalActive}</span>}
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="maintenance"
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent px-0 py-2 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground transition-all"
+                    >
+                        Maintenance
+                        {maintenance.length > 0 && <span className="ml-2 bg-blue-500/10 text-blue-400 text-[10px] px-1.5 py-0.5 rounded-full">{maintenance.length}</span>}
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="history"
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent px-0 py-2 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground transition-all"
+                    >
+                        History
+                    </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="active" className="mt-6 space-y-4">
-                    {activeIncidents.length === 0 && (
-                        <div className="flex flex-col items-center justify-center p-12 text-slate-500 border border-dashed border-slate-800 rounded-lg">
-                            <CheckCircle2 className="w-12 h-12 mb-4 text-green-500/50" />
-                            <p>All systems operational. No active incidents.</p>
+                <TabsContent value="active" className="mt-8 space-y-8 focus-visible:outline-none focus-visible:ring-0">
+                    {totalActive === 0 && (
+                        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/60">
+                            <CheckCircle2 className="w-10 h-10 mb-4 text-emerald-500/30" />
+                            <p className="text-sm font-medium">All systems operational</p>
+                            <p className="text-xs opacity-70 mt-1">No active incidents or anomalies.</p>
                         </div>
                     )}
-                    {activeIncidents.map(i => <IncidentCard key={i.id} incident={i} />)}
+
+                    {/* Critical Outages Section */}
+                    {downtimeEvents.length > 0 && (
+                        <div className="space-y-3 animation-in fade-in slide-in-from-bottom-2 duration-500">
+                            <h3 className="text-xs font-semibold text-red-500 uppercase tracking-widest pl-1">Critical Outages</h3>
+                            <div className="rounded-xl border border-red-900/20 bg-red-950/5 overflow-hidden px-4">
+                                {downtimeEvents.map((e, i) => <SystemEventRow key={e.id + i} event={e} active={true} />)}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Degraded Performance Section */}
+                    {degradedEvents.length > 0 && (
+                        <div className="space-y-3 animation-in fade-in slide-in-from-bottom-3 duration-500">
+                            <h3 className="text-xs font-semibold text-yellow-500 uppercase tracking-widest pl-1">Performance Issues</h3>
+                            <div className="rounded-xl border border-yellow-900/20 bg-yellow-950/5 overflow-hidden px-4">
+                                {degradedEvents.map((e, i) => <SystemEventRow key={e.id + i} event={e} active={true} />)}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Manual Incidents (General) */}
+                    {activeIncidents.length > 0 && (
+                        <div className="space-y-3 animation-in fade-in slide-in-from-bottom-4 duration-500">
+                            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest pl-1">Reported Incidents</h3>
+                            <div className="space-y-3">
+                                {activeIncidents.map(i => <IncidentCard key={i.id} incident={i} />)}
+                            </div>
+                        </div>
+                    )}
                 </TabsContent>
 
-                <TabsContent value="maintenance" className="mt-6 space-y-4">
-                    {maintenance.length === 0 && <div className="text-center text-slate-500 py-12">No scheduled maintenance.</div>}
+                <TabsContent value="maintenance" className="mt-8 space-y-4 focus-visible:outline-none focus-visible:ring-0">
+                    {maintenance.length === 0 && (
+                        <div className="text-center text-muted-foreground/50 py-16 text-sm">No scheduled maintenance.</div>
+                    )}
                     {maintenance.map(i => <IncidentCard key={i.id} incident={i} />)}
                 </TabsContent>
 
-                <TabsContent value="history" className="mt-6 space-y-4">
-                    {history.map(i => <IncidentCard key={i.id} incident={i} />)}
+                <TabsContent value="history" className="mt-8 space-y-4 focus-visible:outline-none focus-visible:ring-0">
+                    {historySystemEvents.length === 0 && history.length === 0 && (
+                        <div className="text-center text-muted-foreground/50 py-16 text-sm">No recent history.</div>
+                    )}
+
+                    <div className="divide-y divide-border/30">
+                        {historySystemEvents.map((e, i) => <SystemEventRow key={e.id + i} event={e} active={false} />)}
+                    </div>
+
+                    <div className="pt-6 space-y-3">
+                        {history.map(i => <IncidentCard key={i.id} incident={i} />)}
+                    </div>
                 </TabsContent>
             </Tabs>
         </div>

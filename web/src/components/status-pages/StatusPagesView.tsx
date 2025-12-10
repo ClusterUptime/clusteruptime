@@ -25,15 +25,28 @@ export function StatusPagesView() {
         setPages(data);
     };
 
+    // Backend now returns the unified list of all potential status pages (Global + Groups)
+    // so we don't need to manually merge with 'groups' store state.
+
     useEffect(() => {
         load();
     }, []);
 
     const handleToggle = async (slug: string, currentStatus: boolean, title: string, groupId?: string | null) => {
-        // Optimistic update? Or wait?
         try {
-            // We now pass title and groupId so backend can UPSERT if missing.
-            await toggleStatusPage(slug, !currentStatus, title, groupId || undefined);
+            // If slug starts with 'g-' and looks like an ID default, we might want to generate a prettier slug
+            // But for now, backend handles upsert.
+
+            // Generate a prettier slug if it's currently a raw ID-based default and we are enabling it
+            let targetSlug = slug;
+            if (!currentStatus && (slug.startsWith('g-') || slug === 'all')) {
+                if (slug !== 'all') {
+                    // Simple clean slug from title
+                    targetSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || slug;
+                }
+            }
+
+            await toggleStatusPage(targetSlug, !currentStatus, title, groupId || undefined);
             toast({ title: "Status Page Updated", description: `${title} is now ${!currentStatus ? 'Public' : 'Private'}` });
             load();
         } catch (e) {
@@ -41,75 +54,63 @@ export function StatusPagesView() {
         }
     };
 
-    // Merge pages config with Groups
-    const allPages = [
-        {
-            slug: 'all',
-            title: 'Global Status',
-            groupId: null,
-            public: pages.find(p => p.slug === 'all')?.public || false
-        },
-        ...groups.map(g => ({
-            slug: g.name.toLowerCase().replace(/\s+/g, '-'), // Naive slug gen
-            title: g.name,
-            groupId: g.id,
-            public: pages.find(p => p.groupId === g.id)?.public || false // Matching by GroupID is safer
-        }))
-    ];
+    const allPages = pages;
 
     return (
         <div className="space-y-6">
             <div>
-                <h3 className="text-lg font-medium">Status Pages</h3>
+                <h2 className="text-xl font-semibold tracking-tight text-foreground">Status Pages</h2>
                 <p className="text-sm text-muted-foreground">
-                    Manage public status pages for your monitors.
+                    Enable status pages to share uptime history with your users.
                 </p>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-3">
                 {allPages.map(page => (
-                    <Card key={page.slug} className="bg-slate-900/20 border-slate-800">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                            <div className="space-y-1">
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    {page.title}
-                                    {page.public ? (
-                                        <Badge variant="default" className="bg-green-500/10 text-green-500 hover:bg-green-500/20 border-green-500/20">Public</Badge>
-                                    ) : (
-                                        <Badge variant="secondary" className="text-slate-500">Private</Badge>
-                                    )}
-                                </CardTitle>
-                                <CardDescription>
-                                    {page.public
-                                        ? (
-                                            <a
-                                                href={`/status/${page.slug}`}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="ml-auto flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                                            >
-                                                Open Public Page <ExternalLink className="w-3 h-3" />
-                                            </a>
-                                        )
-                                        : "Only visible to administrators"}
-                                </CardDescription>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                {page.public && (
-                                    <Button variant="ghost" size="sm" className="gap-2" asChild>
-                                        <a href={`/status/${page.slug}`} target="_blank" rel="noreferrer">
-                                            <ExternalLink className="w-4 h-4" />
-                                            View
-                                        </a>
-                                    </Button>
+                    <div
+                        key={page.slug}
+                        className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 transition-all duration-200"
+                    >
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-3">
+                                <span className="text-base font-medium text-foreground">{page.title}</span>
+                                {page.public ? (
+                                    <Badge variant="default" className="bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25 border-emerald-500/20 shadow-none font-normal text-xs px-2 py-0.5 h-auto">
+                                        Active
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="secondary" className="bg-slate-800/50 text-slate-500 hover:bg-slate-800/70 border-slate-700/50 shadow-none font-normal text-xs px-2 py-0.5 h-auto">
+                                        Disabled
+                                    </Badge>
                                 )}
+                            </div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                                <span className="font-mono text-xs opacity-50">/{page.slug}</span>
+                                {page.public && (
+                                    <a
+                                        href={`/status/${page.slug}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                    >
+                                        Visit Page <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-2">
+                                <span className={`text-sm font-medium transition-colors ${page.public ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                    {page.public ? 'On' : 'Off'}
+                                </span>
                                 <Switch
                                     checked={page.public}
                                     onCheckedChange={() => handleToggle(page.slug, page.public, page.title, page.groupId)}
                                 />
                             </div>
-                        </CardHeader>
-                    </Card>
+                        </div>
+                    </div>
                 ))}
             </div>
         </div>

@@ -18,6 +18,7 @@ func NewRouter(manager *uptime.Manager, store *db.Store) http.Handler {
 	uptimeH := NewUptimeHandler(manager, store)
 	authH := NewAuthHandler(store)
 	statusPageH := NewStatusPageHandler(store, manager)
+	eventH := NewEventHandler(store, manager)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -55,6 +56,8 @@ func NewRouter(manager *uptime.Manager, store *db.Store) http.Handler {
 			protected.Get("/uptime", uptimeH.GetHistory)                          // Dashboard data (authenticated)
 			protected.Get("/monitors/{id}/uptime", uptimeH.GetMonitorUptimeStats) // Uptime Stats
 			protected.Get("/monitors/{id}/latency", uptimeH.GetMonitorLatency)    // Latency Chart
+			protected.Get("/overview", uptimeH.GetOverview)                       // New Lightweight Overview
+			protected.Get("/events", eventH.GetSystemEvents)                      // System Events (Active + History)
 
 			// CRUD operations
 			crudH := NewCRUDHandler(store, manager)
