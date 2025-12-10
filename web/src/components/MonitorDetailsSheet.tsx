@@ -31,7 +31,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 
 interface MonitorDetailsSheetProps {
     monitor: Monitor;
@@ -142,14 +142,48 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
             }
 
             if (found) {
-                filled.push(found);
+                if (found.failed) {
+                    filled.push({ ...found, latency: null });
+                } else {
+                    filled.push(found);
+                }
             } else {
-                filled.push({ timestamp: t, latency: null });
+                filled.push({ timestamp: t, latency: null, failed: false }); // Gap is just gap, not failure? Or unknown? Assume unknown/gap.
             }
         }
 
         return filled;
     }
+
+    const getFailureZones = (data: any[]) => {
+        const zones = [];
+        let start = null;
+
+        // Helper to determine step size roughly for zone width
+        // Assume consistent step from timeRange logic or measure it?
+        // Let's just use adjacent points.
+
+        for (let i = 0; i < data.length; i++) {
+            const point = data[i];
+            if (point.failed) {
+                if (start === null) start = point.timestamp;
+            } else {
+                if (start !== null) {
+                    // Close zone
+                    // Extend end to cover the full step? 
+                    // AreaChart points are usually "starts" of intervals or instant points.
+                    // Let's make the zone span from start timestamp to previous failed timestamp.
+                    zones.push({ start, end: data[i - 1].timestamp });
+                    start = null;
+                }
+            }
+        }
+        // Close trailing zone
+        if (start !== null) {
+            zones.push({ start, end: data[data.length - 1].timestamp });
+        }
+        return zones;
+    };
 
     const handleSave = () => {
         updateMonitor(monitor.id, { name, url, interval });
@@ -279,7 +313,34 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                                                 if (!user?.timezone) return new Date(label).toLocaleString();
                                                 return new Date(label).toLocaleString('en-US', { timeZone: user.timezone });
                                             }}
+                                            formatter={(value: any) => [value != null ? `${value}ms` : 'Down', 'Latency']}
                                         />
+
+                                        {/* Render red zones for downtime */}
+                                        {latencyData.map((entry: any, index: number) => {
+                                            if (entry.failed) {
+                                                // Find width of this failure slot based on previous/next or step? 
+                                                // Simplified: Render a ReferenceArea for this specific timestamp +/- half step? 
+                                                // Better: If we have contiguous failures, merge them?
+                                                // For now, let's just render a ReferenceArea for each failed point covering its slot.
+                                                // But ReferenceArea needs x1, x2.
+                                                // We need to pre-calculate zones outside JSX for cleaner render.
+                                                return null;
+                                            }
+                                            return null;
+                                        })}
+
+                                        {getFailureZones(latencyData).map((zone: any, i: number) => (
+                                            <ReferenceArea
+                                                key={i}
+                                                x1={zone.start}
+                                                x2={zone.end}
+                                                fill="#ef4444"
+                                                fillOpacity={0.1}
+                                                strokeOpacity={0}
+                                            />
+                                        ))}
+
                                         <Area
                                             type="monotone"
                                             dataKey="latency"
@@ -288,6 +349,7 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                                             fillOpacity={1}
                                             fill="url(#colorLatency)"
                                             isAnimationActive={true}
+                                            connectNulls={false} // Ensure line breaks
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>

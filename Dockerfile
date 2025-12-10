@@ -8,18 +8,19 @@ RUN cd web && npm ci
 COPY web ./web
 RUN cd web && npm run build
 
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS backend
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS backend
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /app
-RUN apk add --no-cache git ca-certificates
+# Debian images usually have git and ca-certificates. Update if needed.
+# RUN apt-get update && apt-get install -y git ca-certificates
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 # Embed frontend
 COPY --from=frontend /app/web/dist ./internal/static/dist
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /clusteruptime ./cmd/dashboard
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /clusteruptime ./cmd/dashboard
 
 FROM --platform=$TARGETPLATFORM gcr.io/distroless/base-debian12:nonroot
 WORKDIR /app

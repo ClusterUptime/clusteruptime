@@ -752,6 +752,7 @@ func (s *Store) GetMonitorEvents(monitorID string, limit int) ([]MonitorEvent, e
 type LatencyPoint struct {
 	Timestamp time.Time `json:"timestamp"`
 	Latency   int64     `json:"latency"`
+	Failed    bool      `json:"failed"`
 }
 
 func (s *Store) GetLatencyStats(monitorID string, hours int) ([]LatencyPoint, error) {
@@ -772,7 +773,8 @@ func (s *Store) GetLatencyStats(monitorID string, hours int) ([]LatencyPoint, er
 	query = fmt.Sprintf(`
 		SELECT 
 			%s as ts_group,
-			CAST(AVG(latency) AS INTEGER) as avg_latency
+			CAST(AVG(latency) AS INTEGER) as avg_latency,
+			MAX(CASE WHEN status != 'up' THEN 1 ELSE 0 END) as failed
 		FROM monitor_checks 
 		WHERE monitor_id = ? 
 		AND datetime(timestamp) > datetime('now', '-' || ? || ' hours')
@@ -790,22 +792,18 @@ func (s *Store) GetLatencyStats(monitorID string, hours int) ([]LatencyPoint, er
 	for rows.Next() {
 		var p LatencyPoint
 		var tsStr string
-		if err := rows.Scan(&tsStr, &p.Latency); err != nil {
+		if err := rows.Scan(&tsStr, &p.Latency, &p.Failed); err != nil {
 			return nil, err
 		}
 
-		// Parse timestamp based on what we selected
-		// Minute/Hour format: "2006-01-02 15:04:05"
-		// Day format: "2006-01-02"
-		t, err := time.Parse("2006-01-02 15:04:05", tsStr)
-		if err != nil {
-			// Try Day format
-			t, err = time.Parse("2006-01-02", tsStr)
-			if err != nil {
-				continue
-			}
+		// Parse string depending on group?
+		// SQLite returns strict formats we requested.
+		// If groupBy returns like "2025-12-10 03:00:00"
+		if len(tsStr) == 10 { // YYYY-MM-DD
+			p.Timestamp, _ = time.Parse("2006-01-02", tsStr)
+		} else {
+			p.Timestamp, _ = time.Parse("2006-01-02 15:04:05", tsStr)
 		}
-		p.Timestamp = t
 		points = append(points, p)
 	}
 	return points, nil
