@@ -199,3 +199,34 @@ func (h *UptimeHandler) GetMonitorUptimeStats(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
+func (h *UptimeHandler) GetMonitorLatency(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "ID required", http.StatusBadRequest)
+		return
+	}
+
+	rangeStr := r.URL.Query().Get("range")
+	hours := 24 // Default
+	switch rangeStr {
+	case "1h":
+		hours = 1
+	case "24h":
+		hours = 24
+	case "7d":
+		hours = 168
+	case "30d":
+		hours = 720
+	default:
+		hours = 24
+	}
+
+	points, err := h.store.GetLatencyStats(id, hours)
+	if err != nil {
+		http.Error(w, "Failed to fetch latency stats: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(points)
+}

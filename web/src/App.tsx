@@ -31,14 +31,13 @@ function MonitorCard({ monitor }: { monitor: any }) {
     <>
       <div
         onClick={() => setDetailsOpen(true)}
-        className="flex flex-col sm:flex-row items-center justify-between p-4 border rounded-lg bg-card/40 hover:bg-card/60 transition-all gap-4 cursor-pointer group w-full"
+        className="flex flex-col sm:flex-row items-center justify-between p-4 border border-slate-800/40 rounded-lg bg-card/40 hover:bg-card/60 transition-all gap-4 cursor-pointer group w-full"
       >
         <div className="space-y-1 flex-1 min-w-0 mr-4">
           <div className="flex items-center gap-2.5">
-            <div className={`w-2 h-2 rounded-full shrink-0 ${monitor.status === 'up' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-rose-500 animate-pulse'}`} />
             <span className="font-medium text-sm group-hover:text-blue-400 transition-colors truncate block" title={monitor.name}>{monitor.name}</span>
           </div>
-          <div className="text-xs text-muted-foreground font-mono truncate block opacity-60 ml-4.5" title={monitor.url}>{monitor.url}</div>
+          <div className="text-xs text-muted-foreground font-mono truncate block opacity-60" title={monitor.url}>{monitor.url}</div>
         </div>
 
         <div className="flex-none hidden sm:block">
@@ -68,7 +67,7 @@ function MonitorGroup({ group }: { group: any }) {
   };
 
   return (
-    <Card className="bg-slate-900/20 border-slate-800">
+    <Card className="bg-slate-900/20 border-slate-800/40">
       <CardHeader className="p-4 pb-2">
         <div className="flex items-center justify-between">
           <div>

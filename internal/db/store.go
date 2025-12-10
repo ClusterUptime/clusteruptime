@@ -748,3 +748,65 @@ func (s *Store) GetMonitorEvents(monitorID string, limit int) ([]MonitorEvent, e
 	}
 	return events, nil
 }
+
+type LatencyPoint struct {
+	Timestamp time.Time `json:"timestamp"`
+	Latency   int64     `json:"latency"`
+}
+
+func (s *Store) GetLatencyStats(monitorID string, hours int) ([]LatencyPoint, error) {
+	var query string
+	var groupBy string
+
+	if hours <= 1 {
+		// 1h -> Group by Minute
+		groupBy = "strftime('%Y-%m-%d %H:%M:00', timestamp)"
+	} else if hours <= 168 {
+		// 24h & 7d -> Group by Hour
+		groupBy = "strftime('%Y-%m-%d %H:00:00', timestamp)"
+	} else {
+		// 30d+ -> Group by Day
+		groupBy = "strftime('%Y-%m-%d', timestamp)"
+	}
+
+	query = fmt.Sprintf(`
+		SELECT 
+			%s as ts_group,
+			CAST(AVG(latency) AS INTEGER) as avg_latency
+		FROM monitor_checks 
+		WHERE monitor_id = ? 
+		AND datetime(timestamp) > datetime('now', '-' || ? || ' hours')
+		GROUP BY ts_group
+		ORDER BY ts_group ASC
+	`, groupBy)
+
+	rows, err := s.db.Query(query, monitorID, hours)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var points []LatencyPoint
+	for rows.Next() {
+		var p LatencyPoint
+		var tsStr string
+		if err := rows.Scan(&tsStr, &p.Latency); err != nil {
+			return nil, err
+		}
+
+		// Parse timestamp based on what we selected
+		// Minute/Hour format: "2006-01-02 15:04:05"
+		// Day format: "2006-01-02"
+		t, err := time.Parse("2006-01-02 15:04:05", tsStr)
+		if err != nil {
+			// Try Day format
+			t, err = time.Parse("2006-01-02", tsStr)
+			if err != nil {
+				continue
+			}
+		}
+		p.Timestamp = t
+		points = append(points, p)
+	}
+	return points, nil
+}

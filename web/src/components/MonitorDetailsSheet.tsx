@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/monitor-visuals";
-import { Trash2, Save, Activity, Clock } from "lucide-react";
+import { Trash2, Save, Activity, Clock, BarChart } from "lucide-react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -31,6 +31,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface MonitorDetailsSheetProps {
     monitor: Monitor;
@@ -39,11 +40,13 @@ interface MonitorDetailsSheetProps {
 }
 
 export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDetailsSheetProps) {
-    const { updateMonitor, deleteMonitor } = useMonitorStore();
+    const { updateMonitor, deleteMonitor, user } = useMonitorStore();
     const [name, setName] = useState(monitor.name);
     const [url, setUrl] = useState(monitor.url);
     const [interval, setInterval] = useState(monitor.interval || 60);
     const [stats, setStats] = useState({ uptime24h: 100, uptime7d: 100, uptime30d: 100 });
+    const [latencyData, setLatencyData] = useState([]);
+    const [timeRange, setTimeRange] = useState("1h");
 
     useEffect(() => {
         if (open) {
@@ -55,12 +58,98 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
 
     useEffect(() => {
         if (open && monitor.id) {
+            // Fetch Uptime Stats
             fetch(`/api/monitors/${monitor.id}/uptime`)
                 .then(res => res.json())
                 .then(data => setStats(data))
                 .catch(err => console.error("Failed to fetch stats", err));
+
+            // Fetch Latency Data
+            fetchLatency(monitor.id, timeRange);
         }
-    }, [open, monitor.id]);
+    }, [open, monitor.id, timeRange]);
+
+    const fetchLatency = (id: string, range: string) => {
+        fetch(`/api/monitors/${id}/latency?range=${range}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data) {
+                    const sortedData = data
+                        .map((point: any) => ({
+                            ...point,
+                            timestamp: new Date(point.timestamp).getTime()
+                        }))
+                        .sort((a: any, b: any) => a.timestamp - b.timestamp);
+
+                    const filledData = fillDataGaps(sortedData, range);
+                    setLatencyData(filledData);
+                }
+            })
+            .catch(err => console.error("Failed to fetch latency", err));
+    }
+
+    const fillDataGaps = (data: any[], range: string) => {
+        if (data.length === 0) return [];
+
+        const now = new Date().getTime();
+        let step = 60 * 60 * 1000; // Default 1 hour
+        let start = now - 24 * 60 * 60 * 1000;
+
+        if (range === "1h") {
+            step = 60 * 1000; // 1 minute
+            start = now - 60 * 60 * 1000;
+        } else if (range === "7d") {
+            step = 60 * 60 * 1000; // 1 hour
+            start = now - 7 * 24 * 60 * 60 * 1000;
+        } else if (range === "30d") {
+            step = 24 * 60 * 60 * 1000; // 1 day (Backend groups by day? Wait, verify store.go logic. Store forces hour for > 25. Let's stick to hour? 30d * 24 = 720 points. Acceptable.)
+            // Actually, for 30d, visual gap might be better if per hour? 
+            // Let's assume backend returns hourly for 30d too as per previous verify.
+            step = 60 * 60 * 1000;
+            start = now - 30 * 24 * 60 * 60 * 1000;
+        }
+
+        const filled = [];
+        const dataMap = new Map(data.map(d => {
+            // Round timestamp to nearest step to key match? 
+            // Or just check tolerance.
+            // Simple approach: Iterate time steps. If we have a point close enough, use it.
+            return [d.timestamp, d];
+        }));
+
+        // Optimize: Pointer walk
+        let dataIndex = 0;
+        // Align start to next step boundary to mesh with backend? 
+        // Backend groups by pure strftime/time.
+        // Let's just walk from calculated Start to Now.
+
+        for (let t = start; t <= now; t += step) {
+            // Find point within half a step tolerance
+            let found = null;
+
+            // Advance dataIndex until we pass t + step/2
+            while (dataIndex < data.length) {
+                const point = data[dataIndex];
+                const diff = Math.abs(point.timestamp - t);
+                if (diff < step / 2) {
+                    found = point;
+                    break;
+                }
+                if (point.timestamp > t + step / 2) {
+                    break; // Passed
+                }
+                dataIndex++;
+            }
+
+            if (found) {
+                filled.push(found);
+            } else {
+                filled.push({ timestamp: t, latency: null });
+            }
+        }
+
+        return filled;
+    }
 
     const handleSave = () => {
         updateMonitor(monitor.id, { name, url, interval });
@@ -72,9 +161,24 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
         return val.toFixed(2) + "%";
     }
 
+    const formatXAxis = (tickItem: string) => {
+        const date = new Date(tickItem);
+        const tz = user?.timezone || undefined;
+
+        if (timeRange === "1h") return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+        if (timeRange === "24h") return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: tz });
+    }
+
+    const getUptimeColor = (val: number) => {
+        if (val >= 98) return "text-emerald-400";
+        if (val >= 90) return "text-amber-400";
+        return "text-rose-400"; // Red for < 90%
+    }
+
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent className="bg-slate-950 border-slate-800 text-slate-100 sm:max-w-[500px] overflow-y-auto">
+            <SheetContent className="bg-slate-950 border-slate-800 text-slate-100 sm:max-w-[600px] overflow-y-auto">
                 <SheetHeader className="mb-6">
                     <div className="flex items-center justify-between">
                         <SheetTitle className="text-slate-100">{monitor.name}</SheetTitle>
@@ -83,28 +187,113 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                     <SheetDescription className="text-slate-400 font-mono text-xs">
                         ID: {monitor.id}
                     </SheetDescription>
-
-                    <div className="grid grid-cols-3 gap-2 mt-4">
-                        <div className="bg-slate-900 border border-slate-800 rounded p-2 text-center">
-                            <span className="text-xs text-slate-500 block mb-1">24h Uptime</span>
-                            <span className="text-sm font-semibold text-green-400">{formatUptime(stats.uptime24h)}</span>
-                        </div>
-                        <div className="bg-slate-900 border border-slate-800 rounded p-2 text-center">
-                            <span className="text-xs text-slate-500 block mb-1">7d Uptime</span>
-                            <span className="text-sm font-semibold text-green-400">{formatUptime(stats.uptime7d)}</span>
-                        </div>
-                        <div className="bg-slate-900 border border-slate-800 rounded p-2 text-center">
-                            <span className="text-xs text-slate-500 block mb-1">30d Uptime</span>
-                            <span className="text-sm font-semibold text-green-400">{formatUptime(stats.uptime30d)}</span>
-                        </div>
-                    </div>
                 </SheetHeader>
 
-                <Tabs defaultValue="events" className="w-full">
-                    <TabsList className="bg-slate-900 border border-slate-800 w-full">
-                        <TabsTrigger value="events" className="flex-1">Events</TabsTrigger>
-                        <TabsTrigger value="settings" className="flex-1">Settings</TabsTrigger>
+                <Tabs defaultValue="metrics" className="w-full">
+                    <TabsList className="bg-slate-900 border border-slate-800 w-full grid grid-cols-3">
+                        <TabsTrigger value="metrics">Metrics</TabsTrigger>
+                        <TabsTrigger value="events">Events</TabsTrigger>
+                        <TabsTrigger value="settings">Settings</TabsTrigger>
                     </TabsList>
+
+                    <TabsContent value="metrics" className="mt-6 space-y-6">
+                        {/* Uptime Cards */}
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="bg-slate-900 border border-slate-800 rounded p-3 text-center">
+                                <span className="text-xs text-slate-500 block mb-1">24h Uptime</span>
+                                <span className={`text-lg font-semibold ${getUptimeColor(stats.uptime24h)}`}>{formatUptime(stats.uptime24h)}</span>
+                            </div>
+                            <div className="bg-slate-900 border border-slate-800 rounded p-3 text-center">
+                                <span className="text-xs text-slate-500 block mb-1">7d Uptime</span>
+                                <span className={`text-lg font-semibold ${getUptimeColor(stats.uptime7d)}`}>{formatUptime(stats.uptime7d)}</span>
+                            </div>
+                            <div className="bg-slate-900 border border-slate-800 rounded p-3 text-center">
+                                <span className="text-xs text-slate-500 block mb-1">30d Uptime</span>
+                                <span className={`text-lg font-semibold ${getUptimeColor(stats.uptime30d)}`}>{formatUptime(stats.uptime30d)}</span>
+                            </div>
+                        </div>
+
+                        {/* Latency Chart */}
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                                    <BarChart className="w-4 h-4 text-blue-400" /> Response Time
+                                </h3>
+                                <div className="flex bg-slate-900 rounded-lg p-0.5 border border-slate-800">
+                                    {["1h", "24h", "7d", "30d"].map((r) => (
+                                        <button
+                                            key={r}
+                                            onClick={() => setTimeRange(r)}
+                                            className={`px-3 py-1 text-xs rounded-md transition-all ${timeRange === r ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                                                }`}
+                                        >
+                                            {r}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="h-[250px] w-full bg-slate-900/40 border border-slate-800/50 rounded-lg p-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={latencyData}>
+                                        <defs>
+                                            <linearGradient id="colorLatency" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                        <XAxis
+                                            dataKey="timestamp"
+                                            stroke="#64748b"
+                                            fontSize={10}
+                                            tickFormatter={formatXAxis}
+                                            minTickGap={30}
+                                            domain={[
+                                                () => {
+                                                    const now = new Date().getTime();
+                                                    if (timeRange === "1h") return now - 60 * 60 * 1000;
+                                                    if (timeRange === "24h") return now - 24 * 60 * 60 * 1000;
+                                                    if (timeRange === "7d") return now - 7 * 24 * 60 * 60 * 1000;
+                                                    if (timeRange === "30d") return now - 30 * 24 * 60 * 60 * 1000;
+                                                    return now - 24 * 60 * 60 * 1000;
+                                                },
+                                                () => new Date().getTime()
+                                            ]}
+                                            allowDataOverflow={true}
+                                            type="number"
+                                            scale="time"
+                                        />
+                                        <YAxis
+                                            stroke="#64748b"
+                                            fontSize={10}
+                                            tickFormatter={(val) => `${val}ms`}
+                                            width={50}
+                                            domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.1)]}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '6px' }}
+                                            itemStyle={{ color: '#e2e8f0', fontSize: '12px' }}
+                                            labelStyle={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}
+                                            labelFormatter={(label) => {
+                                                if (!user?.timezone) return new Date(label).toLocaleString();
+                                                return new Date(label).toLocaleString('en-US', { timeZone: user.timezone });
+                                            }}
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="latency"
+                                            stroke="#3b82f6"
+                                            strokeWidth={2}
+                                            fillOpacity={1}
+                                            fill="url(#colorLatency)"
+                                            isAnimationActive={true}
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    </TabsContent>
 
                     <TabsContent value="events" className="mt-6 space-y-4">
                         <h3 className="text-sm font-medium text-slate-300 mb-4 flex items-center gap-2">

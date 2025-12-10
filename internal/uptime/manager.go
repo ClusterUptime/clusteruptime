@@ -135,7 +135,7 @@ func (m *Manager) worker() {
 	}
 
 	for job := range m.jobQueue {
-		start := time.Now()
+		start := time.Now().UTC()
 		resp, err := client.Get(job.URL)
 		latency := time.Since(start).Milliseconds()
 

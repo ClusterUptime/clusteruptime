@@ -54,6 +54,7 @@ func NewRouter(manager *uptime.Manager, store *db.Store) http.Handler {
 			protected.Patch("/auth/me", authH.UpdateUser)
 			protected.Get("/uptime", uptimeH.GetHistory)                          // Dashboard data (authenticated)
 			protected.Get("/monitors/{id}/uptime", uptimeH.GetMonitorUptimeStats) // Uptime Stats
+			protected.Get("/monitors/{id}/latency", uptimeH.GetMonitorLatency)    // Latency Chart
 
 			// CRUD operations
 			crudH := NewCRUDHandler(store, manager)
