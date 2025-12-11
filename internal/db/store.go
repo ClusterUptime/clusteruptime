@@ -43,6 +43,19 @@ type Group struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+type Incident struct {
+	ID             string     `json:"id"`
+	Title          string     `json:"title"`
+	Description    string     `json:"description"`
+	Type           string     `json:"type"`     // incident | maintenance
+	Severity       string     `json:"severity"` // minor | major | critical
+	Status         string     `json:"status"`   // investigation | identified | ... | scheduled | in_progress | completed
+	StartTime      time.Time  `json:"startTime"`
+	EndTime        *time.Time `json:"endTime,omitempty"`
+	AffectedGroups string     `json:"affectedGroups"` // JSON array
+	CreatedAt      time.Time  `json:"createdAt"`
+}
+
 func NewStore(dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -140,6 +153,18 @@ func (s *Store) migrate() error {
 	CREATE TABLE IF NOT EXISTS settings (
 		key TEXT PRIMARY KEY,
 		value TEXT
+	);
+	CREATE TABLE IF NOT EXISTS incidents (
+		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		description TEXT,
+		type TEXT NOT NULL,
+		severity TEXT NOT NULL,
+		status TEXT NOT NULL,
+		start_time DATETIME NOT NULL,
+		end_time DATETIME,
+		affected_groups TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	INSERT OR IGNORE INTO settings (key, value) VALUES ('latency_threshold', '1000');
 	CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
@@ -848,4 +873,36 @@ func (s *Store) GetLatencyStats(monitorID string, hours int) ([]LatencyPoint, er
 		points = append(points, p)
 	}
 	return points, nil
+}
+
+// Incident CRUD
+
+func (s *Store) CreateIncident(i Incident) error {
+	_, err := s.db.Exec(`
+		INSERT INTO incidents (id, title, description, type, severity, status, start_time, end_time, affected_groups, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, i.ID, i.Title, i.Description, i.Type, i.Severity, i.Status, i.StartTime, i.EndTime, i.AffectedGroups, time.Now())
+	return err
+}
+
+func (s *Store) GetIncidents() ([]Incident, error) {
+	rows, err := s.db.Query("SELECT id, title, description, type, severity, status, start_time, end_time, affected_groups, created_at FROM incidents ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var incidents []Incident
+	for rows.Next() {
+		var i Incident
+		var endTime sql.NullTime
+		if err := rows.Scan(&i.ID, &i.Title, &i.Description, &i.Type, &i.Severity, &i.Status, &i.StartTime, &endTime, &i.AffectedGroups, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		if endTime.Valid {
+			i.EndTime = &endTime.Time
+		}
+		incidents = append(incidents, i)
+	}
+	return incidents, nil
 }

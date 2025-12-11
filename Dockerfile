@@ -21,10 +21,16 @@ COPY internal ./internal
 # Embed frontend
 COPY --from=frontend /app/web/dist ./internal/static/dist
 RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /clusteruptime ./cmd/dashboard
+# Prepare data directory
+RUN mkdir -p /data
 
 FROM --platform=$TARGETPLATFORM gcr.io/distroless/base-debian12:nonroot
 WORKDIR /app
 COPY --from=backend /clusteruptime /app/clusteruptime
+# Copy /data with correct permissions for nonroot
+COPY --from=backend --chown=65532:65532 /data /data
 ENV LISTEN_ADDR=:9090
+ENV DB_PATH=/data/clusteruptime.db
 EXPOSE 9090
+VOLUME ["/data"]
 ENTRYPOINT ["/app/clusteruptime"]

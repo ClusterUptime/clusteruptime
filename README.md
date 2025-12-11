@@ -4,7 +4,11 @@
 Blazing fast performance with a stunning modern design.
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/placeholder.png" alt="Dashboard Preview" width="100%" />
+  <img src="assets/dashboard-overview.png" alt="Dashboard Preview" width="100%" />
+</div>
+
+<div align="center">
+  <img src="assets/monitor-detail.png" alt="Monitor Detail" width="100%" />
 </div>
 
 ## Features
@@ -23,8 +27,8 @@ Run the container in seconds:
 
 ```bash
 docker run -d -p 9090:9090 \
-  -v ./data:/app/data \
-  ghcr.io/yourusername/clusteruptime:latest
+  -v uptime_data:/data \
+  jesuspaz/clusteruptime:latest
 ```
 
 ### 🛠️ From Source
@@ -43,15 +47,14 @@ Zero config required to start. Optional tweaks via Environment Variables:
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `LISTEN_ADDR` | `:9090` | Port to listen on. |
-| `CHECK_INTERVAL` | `60s` | Default check frequency. |
-| `LOG_LEVEL` | `info` | Verbosity of logs. |
+| `DB_PATH` | `/data/clusteruptime.db` | Path to the SQLite database. |
 
 ## Automation
 
 Manage your stack programmatically. Included script in `tools/`:
 
 ```bash
-python3 tools/create_stack.py --key "sk_live_..." --group "Prod" --urls https://google.com
+python3 tools/create_stack.py --key "sk_live_..." --group "Google" --urls https://google.com
 ```
 
 ---

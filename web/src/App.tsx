@@ -11,6 +11,8 @@ import { Button } from "./components/ui/button";
 import { Plus, Trash2, LayoutDashboard, ChevronRight } from "lucide-react";
 import { CreateMonitorSheet } from "./components/CreateMonitorSheet";
 import { CreateGroupSheet } from "./components/CreateGroupSheet";
+import { CreateMaintenanceSheet } from "./components/incidents/CreateMaintenanceSheet";
+import { MaintenanceView } from "./components/incidents/MaintenanceView";
 import { IncidentsView } from "./components/incidents/IncidentsView";
 import { CreateIncidentSheet } from "./components/incidents/CreateIncidentSheet";
 import { MonitorDetailsSheet } from "./components/MonitorDetailsSheet";
@@ -217,7 +219,20 @@ function Dashboard() {
 }
 
 function AdminLayout() {
-  const { groups, overview, fetchOverview, addGroup, addMonitor, addIncident, user, isAuthChecked } = useMonitorStore();
+  const {
+    user,
+    groups,
+    overview,
+    checkAuth,
+    fetchOverview,
+    addIncident,
+    addMaintenance,
+    addChannel,
+    updateUser,
+    isAuthChecked,
+    addGroup,
+    addMonitor
+  } = useMonitorStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -245,6 +260,7 @@ function AdminLayout() {
   }
 
   const isIncidents = location.pathname === '/incidents';
+  const isMaintenance = location.pathname === '/maintenance';
   const isNotifications = location.pathname === '/notifications';
   const isSettings = location.pathname === '/settings';
   const isStatusPages = location.pathname === '/status-pages';
@@ -255,18 +271,20 @@ function AdminLayout() {
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/';
 
   const pageTitle = isIncidents
-    ? "Incidents & Maintenance"
-    : isNotifications
-      ? "Notifications & Integrations"
-      : isSettings
-        ? "Settings"
-        : isStatusPages
-          ? "Status Pages"
-          : isApiKeys
-            ? "API Keys"
-            : (activeGroup ? activeGroup.name : "System Overview");
+    ? "Incidents"
+    : isMaintenance
+      ? "Maintenance"
+      : isNotifications
+        ? "Notifications & Integrations"
+        : isSettings
+          ? "Settings"
+          : isStatusPages
+            ? "Status Pages"
+            : isApiKeys
+              ? "API Keys"
+              : (activeGroup ? activeGroup.name : "System Overview");
 
-  const existingGroupNames = safeGroups.map(g => g.name);
+  const existingGroupNames = (overview || groups || []).map(g => g.name);
 
   return (
     <SidebarProvider>
@@ -281,6 +299,8 @@ function AdminLayout() {
           <div className="ml-auto flex items-center gap-2">
             {isIncidents ? (
               <CreateIncidentSheet onCreate={addIncident} groups={existingGroupNames} />
+            ) : isMaintenance ? (
+              <CreateMaintenanceSheet onCreate={addMaintenance} groups={existingGroupNames} />
             ) : isNotifications ? (
               <CreateChannelSheet />
             ) : isSettings ? (
@@ -299,7 +319,7 @@ function AdminLayout() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/groups/:groupId" element={<Dashboard />} />
               <Route path="/incidents" element={<IncidentsView />} />
-              <Route path="/maintenance" element={<IncidentsView />} />
+              <Route path="/maintenance" element={<MaintenanceView />} />
               <Route path="/notifications" element={<NotificationsView />} />
               <Route path="/settings" element={<SettingsView />} />
               <Route path="/status-pages" element={<StatusPagesView />} />

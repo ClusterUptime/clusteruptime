@@ -85,10 +85,18 @@ func NewRouter(manager *uptime.Manager, store *db.Store) http.Handler {
 			adminH := NewAdminHandler(store, manager)
 			protected.Post("/admin/reset", adminH.ResetDatabase)
 
-			// Settings
 			settingsH := NewSettingsHandler(store, manager)
 			protected.Get("/settings", settingsH.GetSettings)
 			protected.Patch("/settings", settingsH.UpdateSettings)
+
+			// Incidents & Maintenance
+			incidentH := NewIncidentHandler(store)
+			protected.Get("/incidents", incidentH.GetIncidents)
+			protected.Post("/incidents", incidentH.CreateIncident)
+
+			maintenanceH := NewMaintenanceHandler(store)
+			protected.Get("/maintenance", maintenanceH.GetMaintenance)
+			protected.Post("/maintenance", maintenanceH.CreateMaintenance)
 		})
 	})
 

@@ -88,8 +88,10 @@ interface MonitorStore {
     updateMonitor: (id: string, updates: Partial<Monitor>) => void;
     deleteMonitor: (id: string) => Promise<void>;
 
-    addIncident: (incident: Omit<Incident, 'id' | 'date'>) => void;
+    addIncident: (incident: Omit<Incident, 'id' | 'createdAt' | 'type'>) => void;
+    addMaintenance: (maintenance: Omit<Incident, 'id' | 'createdAt' | 'type' | 'severity'>) => void;
     resolveIncident: (id: string) => void;
+    fetchIncidents: () => Promise<void>;
     addChannel: (channel: Omit<NotificationChannel, 'id'>) => void;
     updateChannel: (id: string, updates: Partial<NotificationChannel>) => void;
     deleteChannel: (id: string) => void;
@@ -180,7 +182,8 @@ interface MonitorStore {
     updateMonitor: (id: string, updates: Partial<Monitor>) => void;
     deleteMonitor: (id: string) => Promise<void>;
 
-    addIncident: (incident: Omit<Incident, 'id' | 'date'>) => void;
+    addIncident: (incident: Omit<Incident, 'id' | 'createdAt' | 'type'>) => void;
+    addMaintenance: (maintenance: Omit<Incident, 'id' | 'createdAt' | 'type' | 'severity'>) => void;
     resolveIncident: (id: string) => void;
     addChannel: (channel: Omit<NotificationChannel, 'id'>) => void;
     updateChannel: (id: string, updates: Partial<NotificationChannel>) => void;
@@ -587,9 +590,73 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         }
     },
 
-    addIncident: (incident) => set((state) => ({
-        incidents: [{ ...incident, id: Math.random().toString(36).substr(2, 9) }, ...state.incidents]
-    })),
+    addIncident: async (incident) => {
+        try {
+            const res = await fetch('/api/incidents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(incident),
+                credentials: 'include'
+            });
+            if (res.ok) {
+                const newIncident = await res.json();
+                set((state) => ({ incidents: [newIncident, ...state.incidents] }));
+                toast({ title: "Incident Created", description: "Incident has been reported." });
+                get().fetchIncidents();
+            }
+        } catch (e) {
+            console.error(e);
+            toast({ title: "Error", description: "Failed to create incident.", variant: "destructive" });
+        }
+    },
+
+    addMaintenance: async (maintenance) => {
+        try {
+            const res = await fetch('/api/maintenance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(maintenance),
+                credentials: 'include'
+            });
+            if (res.ok) {
+                const newMaintenance = await res.json();
+                set((state) => ({ incidents: [newMaintenance, ...state.incidents] }));
+                toast({ title: "Maintenance Scheduled", description: "Maintenance window created." });
+                get().fetchIncidents();
+            }
+        } catch (e) {
+            console.error(e);
+            toast({ title: "Error", description: "Failed to schedule maintenance.", variant: "destructive" });
+        }
+    },
+
+    fetchIncidents: async () => {
+        try {
+            const [resIncidents, resMaintenance] = await Promise.all([
+                fetch('/api/incidents', { credentials: 'include' }),
+                fetch('/api/maintenance', { credentials: 'include' })
+            ]);
+
+            let allEvents: Incident[] = [];
+
+            if (resIncidents.ok) {
+                const incidents = await resIncidents.json();
+                allEvents = [...allEvents, ...(incidents || [])];
+            }
+            if (resMaintenance.ok) {
+                const maintenance = await resMaintenance.json();
+                allEvents = [...allEvents, ...(maintenance || [])];
+            }
+
+            // Sort desc by start time or created at? Usually StartTime for display
+            allEvents.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+
+            set({ incidents: allEvents });
+        } catch (e) {
+            console.error("Failed to fetch incidents", e);
+        }
+    },
+
     addChannel: (channel) => set((state) => ({
         channels: [...state.channels, { ...channel, id: Math.random().toString(36).substr(2, 9) }]
     })),

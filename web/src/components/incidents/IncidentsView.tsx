@@ -99,23 +99,20 @@ function SystemEventRow({ event, active }: { event: SystemIncident; active: bool
 }
 
 export function IncidentsView() {
-    const { incidents, systemEvents, fetchSystemEvents } = useMonitorStore();
+    const { incidents, systemEvents, fetchSystemEvents, fetchIncidents } = useMonitorStore();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const { pathname } = useLocation();
 
     useEffect(() => {
         fetchSystemEvents();
+        fetchIncidents();
     }, []);
 
-    const currentTab = pathname === '/maintenance'
-        ? 'maintenance'
-        : (searchParams.get('tab') || 'active');
+    const currentTab = searchParams.get('tab') || 'active';
 
     const handleTabChange = (value: string) => {
-        if (value === 'maintenance') {
-            navigate('/maintenance');
-        } else if (value === 'active') {
+        if (value === 'active') {
             navigate('/incidents');
         } else {
             navigate(`/incidents?tab=${value}`);
@@ -123,7 +120,6 @@ export function IncidentsView() {
     };
 
     const activeIncidents = incidents.filter(i => i.type === 'incident' && i.status !== 'resolved');
-    const maintenance = incidents.filter(i => i.type === 'maintenance' && i.status !== 'completed');
     const history = incidents.filter(i => i.status === 'resolved' || i.status === 'completed');
 
     const activeSystemEvents = systemEvents?.active || [];
@@ -152,13 +148,6 @@ export function IncidentsView() {
                     >
                         Active Issues
                         {totalActive > 0 && <span className="ml-2 bg-red-500/10 text-red-500 text-[10px] px-1.5 py-0.5 rounded-full">{totalActive}</span>}
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="maintenance"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent px-0 py-2 text-sm font-medium text-muted-foreground data-[state=active]:text-foreground transition-all"
-                    >
-                        Maintenance
-                        {maintenance.length > 0 && <span className="ml-2 bg-blue-500/10 text-blue-400 text-[10px] px-1.5 py-0.5 rounded-full">{maintenance.length}</span>}
                     </TabsTrigger>
                     <TabsTrigger
                         value="history"
@@ -206,13 +195,6 @@ export function IncidentsView() {
                             </div>
                         </div>
                     )}
-                </TabsContent>
-
-                <TabsContent value="maintenance" className="mt-8 space-y-4 focus-visible:outline-none focus-visible:ring-0">
-                    {maintenance.length === 0 && (
-                        <div className="text-center text-muted-foreground/50 py-16 text-sm">No scheduled maintenance.</div>
-                    )}
-                    {maintenance.map(i => <IncidentCard key={i.id} incident={i} />)}
                 </TabsContent>
 
                 <TabsContent value="history" className="mt-8 space-y-4 focus-visible:outline-none focus-visible:ring-0">
