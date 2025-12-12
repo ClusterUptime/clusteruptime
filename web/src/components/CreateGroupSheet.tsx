@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,20 +16,26 @@ import {
 } from "@/components/ui/sheet";
 
 interface CreateGroupSheetProps {
-    onCreate: (name: string) => void;
+    onCreate: (name: string) => Promise<string | undefined>;
 }
 
 export function CreateGroupSheet({ onCreate }: CreateGroupSheetProps) {
     const [name, setName] = useState("");
     const [open, setOpen] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const navigate = useNavigate();
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name) return;
 
-        onCreate(name);
+        const newId = await onCreate(name);
         setName("");
         setOpen(false);
+
+        if (newId) {
+            navigate(`/groups/${newId}`);
+        }
     };
 
     return (

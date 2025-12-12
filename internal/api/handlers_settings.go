@@ -31,9 +31,17 @@ func (h *SettingsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		retention = "30"
 	}
 
+	// Slack Notifications
+	slackEnabled, _ := h.store.GetSetting("notifications.slack.enabled")
+	slackWebhook, _ := h.store.GetSetting("notifications.slack.webhook_url")
+	slackNotifyOn, _ := h.store.GetSetting("notifications.slack.notify_on")
+
 	writeJSON(w, http.StatusOK, map[string]string{
-		"latency_threshold":   val,
-		"data_retention_days": retention,
+		"latency_threshold":               val,
+		"data_retention_days":             retention,
+		"notifications.slack.enabled":     slackEnabled,
+		"notifications.slack.webhook_url": slackWebhook,
+		"notifications.slack.notify_on":   slackNotifyOn,
 	})
 }
 
@@ -76,6 +84,22 @@ func (h *SettingsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request)
 		// For now, the worker reads it every run (daily), so it will pick it up next run.
 		// If we want immediate effect, we'd need to trigger the worker.
 		// But for retention, inevitable delay is fine.
+	}
+
+	// Notifications Keys
+	notificationKeys := []string{
+		"notifications.slack.enabled",
+		"notifications.slack.webhook_url",
+		"notifications.slack.notify_on",
+	}
+
+	for _, key := range notificationKeys {
+		if val, ok := body[key]; ok {
+			if err := h.store.SetSetting(key, val); err != nil {
+				http.Error(w, "Failed to save "+key, http.StatusInternalServerError)
+				return
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})

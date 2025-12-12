@@ -131,10 +131,104 @@ func TestSettingsResult(t *testing.T) {
 		t.Errorf("Expected 'bar', got '%s'", val)
 	}
 
-	// Test Update
 	s.SetSetting("foo", "baz")
 	val, _ = s.GetSetting("foo")
 	if val != "baz" {
 		t.Errorf("Expected 'baz', got '%s'", val)
+	}
+}
+
+func TestMonitorOutages(t *testing.T) {
+	s := newTestStore(t)
+	// Create Group & Monitor Dependencies
+	s.CreateGroup(Group{ID: "g1", Name: "G1"})
+	s.CreateMonitor(Monitor{ID: "m1", GroupID: "g1", Name: "M1", Interval: 60})
+
+	// 1. Create Outage
+	if err := s.CreateOutage("m1", "down", "Connection refused"); err != nil {
+		t.Fatalf("CreateOutage failed: %v", err)
+	}
+
+	// 2. Verify Active
+	active, err := s.GetActiveOutages()
+	if err != nil {
+		t.Fatalf("GetActiveOutages failed: %v", err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("Expected 1 active outage, got %d", len(active))
+	}
+	if active[0].MonitorID != "m1" {
+		t.Errorf("Expected monitor ID m1, got %s", active[0].MonitorID)
+	}
+	if active[0].Type != "down" {
+		t.Errorf("Expected type down, got %s", active[0].Type)
+	}
+	if active[0].GroupName != "G1" {
+		t.Errorf("Expected group name G1, got %s", active[0].GroupName)
+	}
+
+	// 3. Close Outage
+	time.Sleep(1 * time.Millisecond) // Ensure time difference
+	if err := s.CloseOutage("m1"); err != nil {
+		t.Fatalf("CloseOutage failed: %v", err)
+	}
+
+	// 4. Verify No Active
+	active, _ = s.GetActiveOutages()
+	if len(active) != 0 {
+		t.Errorf("Expected 0 active outages, got %d", len(active))
+	}
+
+	// 5. Verify Resolved History
+	history, err := s.GetResolvedOutages(10)
+	if err != nil {
+		t.Fatalf("GetResolvedOutages failed: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("Expected 1 history item, got %d", len(history))
+	}
+	if history[0].EndTime == nil {
+		t.Error("Expected EndTime to be set")
+	}
+}
+
+func TestNotificationChannels(t *testing.T) {
+	s := newTestStore(t)
+
+	c := NotificationChannel{
+		ID:        "nc1",
+		Type:      "slack",
+		Name:      "Dev Team",
+		Config:    `{"webhookUrl": "https://hooks.slack.com/..."}`,
+		Enabled:   true,
+		CreatedAt: time.Now(),
+	}
+
+	// Create
+	if err := s.CreateNotificationChannel(c); err != nil {
+		t.Fatalf("CreateNotificationChannel failed: %v", err)
+	}
+
+	// Get
+	channels, err := s.GetNotificationChannels()
+	if err != nil {
+		t.Fatalf("GetNotificationChannels failed: %v", err)
+	}
+	if len(channels) != 1 {
+		t.Fatalf("Expected 1 channel, got %d", len(channels))
+	}
+	if channels[0].Name != "Dev Team" {
+		t.Errorf("Expected name 'Dev Team', got '%s'", channels[0].Name)
+	}
+
+	// Delete
+	if err := s.DeleteNotificationChannel("nc1"); err != nil {
+		t.Fatalf("DeleteNotificationChannel failed: %v", err)
+	}
+
+	// Verify Empty
+	channels, _ = s.GetNotificationChannels()
+	if len(channels) != 0 {
+		t.Errorf("Expected 0 channels, got %d", len(channels))
 	}
 }

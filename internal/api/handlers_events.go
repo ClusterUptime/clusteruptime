@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/clusteruptime/clusteruptime/internal/db"
@@ -20,86 +19,73 @@ func NewEventHandler(store *db.Store, manager *uptime.Manager) *EventHandler {
 }
 
 type IncidentDTO struct {
-	ID          string     `json:"id"` // Generated, or uses ID of start event
+	ID          string     `json:"id"`
 	MonitorID   string     `json:"monitorId"`
 	MonitorName string     `json:"monitorName"`
+	GroupName   string     `json:"groupName"`
+	GroupID     string     `json:"groupId"`
 	Type        string     `json:"type"` // down, degraded
 	Message     string     `json:"message"`
 	StartedAt   time.Time  `json:"startedAt"`
 	ResolvedAt  *time.Time `json:"resolvedAt"` // Null if active
-	Duration    string     `json:"duration"`   // Human readable? or client calc
+	Duration    string     `json:"duration"`
 }
 
 func (h *EventHandler) GetSystemEvents(w http.ResponseWriter, r *http.Request) {
-	rawEvents, err := h.store.GetSystemEvents(0)
+	activeOutages, err := h.store.GetActiveOutages()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to fetch events")
+		writeError(w, http.StatusInternalServerError, "failed to fetch active outages")
 		return
 	}
 
-	// 1. Group by Monitor
-	eventsByMonitor := make(map[string][]db.SystemEvent)
-	for _, e := range rawEvents {
-		eventsByMonitor[e.MonitorID] = append(eventsByMonitor[e.MonitorID], e)
+	resolvedOutages, err := h.store.GetResolvedOutages(100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch history")
+		return
 	}
 
 	var active []IncidentDTO
-	var history []IncidentDTO
-
-	// 2. Process each monitor
-	for _, events := range eventsByMonitor {
-		// Ensure sorted ASC
-		// (Store already does this, but being safe)
-		// sort.Slice(events, ...)
-
-		var current *IncidentDTO
-
-		for i, e := range events {
-			if e.Type == "up" {
-				if current != nil {
-					// Close the incident
-					resolved := e.Timestamp
-					current.ResolvedAt = &resolved
-					history = append(history, *current)
-					current = nil
-				}
-			} else {
-				// Down or Degraded
-				if current == nil {
-					// Start new incident
-					current = &IncidentDTO{
-						ID:          iframeID(e.ID),
-						MonitorID:   e.MonitorID,
-						MonitorName: e.MonitorName,
-						Type:        e.Type,
-						Message:     e.Message,
-						StartedAt:   e.Timestamp,
-					}
-				} else {
-					// Already active. Escalation/De-escalation?
-					// For now, let's just keep the start time.
-					// Maybe update type if it got worse?
-					if e.Type == "down" && current.Type == "degraded" {
-						current.Type = "down"
-						current.Message = e.Message
-					}
-				}
-			}
-
-			// Handle edge case: Last event is non-up -> It is Active
-			if i == len(events)-1 && current != nil {
-				active = append(active, *current)
-			}
-		}
+	for _, o := range activeOutages {
+		active = append(active, IncidentDTO{
+			ID:          fmt.Sprintf("%d", o.ID),
+			MonitorID:   o.MonitorID,
+			MonitorName: o.MonitorName,
+			GroupName:   o.GroupName,
+			GroupID:     o.GroupID,
+			Type:        o.Type,
+			Message:     o.Summary,
+			StartedAt:   o.StartTime,
+			Duration:    formatDuration(time.Since(o.StartTime)),
+		})
 	}
 
-	// 3. Sort Results DESC (Newest First)
-	sort.Slice(active, func(i, j int) bool {
-		return active[i].StartedAt.After(active[j].StartedAt)
-	})
-	sort.Slice(history, func(i, j int) bool {
-		return history[i].ResolvedAt.After(*history[j].ResolvedAt)
-	})
+	var history []IncidentDTO
+	for _, o := range resolvedOutages {
+		dur := "0m"
+		if o.EndTime != nil {
+			dur = formatDuration(o.EndTime.Sub(o.StartTime))
+		}
+		history = append(history, IncidentDTO{
+			ID:          fmt.Sprintf("%d", o.ID),
+			MonitorID:   o.MonitorID,
+			MonitorName: o.MonitorName,
+			GroupName:   o.GroupName,
+			GroupID:     o.GroupID,
+			Type:        o.Type,
+			Message:     o.Summary,
+			StartedAt:   o.StartTime,
+			ResolvedAt:  o.EndTime,
+			Duration:    dur,
+		})
+	}
+
+	// Returns empty arrays if nil
+	if active == nil {
+		active = []IncidentDTO{}
+	}
+	if history == nil {
+		history = []IncidentDTO{}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"active":  active,
@@ -107,6 +93,13 @@ func (h *EventHandler) GetSystemEvents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func iframeID(id int64) string {
-	return fmt.Sprintf("evt-%d", id)
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Minute)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
 }

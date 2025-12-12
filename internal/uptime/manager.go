@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/clusteruptime/clusteruptime/internal/db"
+	"github.com/clusteruptime/clusteruptime/internal/notifications"
 )
 
 type Job struct {
@@ -37,6 +38,8 @@ type Manager struct {
 	wg          sync.WaitGroup
 
 	latencyThreshold int64
+
+	notifier *notifications.Service
 }
 
 const (
@@ -53,6 +56,7 @@ func NewManager(store *db.Store) *Manager {
 		resultQueue:      make(chan CheckResult, 1000), // Buffer for results
 		stopCh:           make(chan struct{}),
 		latencyThreshold: 1000, // Default
+		notifier:         notifications.NewService(store),
 	}
 
 	// Load settings
@@ -78,6 +82,9 @@ func (m *Manager) Start() {
 
 	// Start Retention Worker
 	go m.retentionWorker()
+
+	// Start Notification Service
+	m.notifier.Start()
 
 	// Initial Sync
 	m.Sync()
@@ -217,20 +224,65 @@ func (m *Manager) resultProcessor() {
 				if !hasHistory {
 					// Handle Initial State
 					if !res.Status {
+						go func() {
+							_ = m.store.CloseOutage(res.MonitorID)
+							_ = m.store.CreateOutage(res.MonitorID, "down", message)
+						}()
 						go m.store.CreateEvent(res.MonitorID, "down", message)
+						m.notifier.Enqueue(notifications.NotificationEvent{
+							MonitorID:   res.MonitorID,
+							MonitorName: mon.GetName(),
+							MonitorURL:  mon.GetTargetURL(),
+							Type:        notifications.EventDown,
+							Message:     message,
+							Time:        res.Timestamp,
+						})
 						log.Printf("Monitor %s is DOWN (Initial)", res.MonitorID)
 					} else if isDegraded {
+						go func() {
+							_ = m.store.CloseOutage(res.MonitorID)
+							_ = m.store.CreateOutage(res.MonitorID, "degraded", "High latency detected (>"+strconv.FormatInt(threshold, 10)+"ms)")
+						}()
 						go m.store.CreateEvent(res.MonitorID, "degraded", "High latency detected (>"+strconv.FormatInt(threshold, 10)+"ms)")
+						m.notifier.Enqueue(notifications.NotificationEvent{
+							MonitorID:   res.MonitorID,
+							MonitorName: mon.GetName(),
+							MonitorURL:  mon.GetTargetURL(),
+							Type:        notifications.EventDegraded,
+							Message:     "High latency detected (> " + strconv.FormatInt(threshold, 10) + "ms)",
+							Time:        res.Timestamp,
+						})
 					}
 				} else {
 					// Handle Transitions
 					if active && !res.Status {
 						// UP -> DOWN
+						go func() {
+							_ = m.store.CloseOutage(res.MonitorID)
+							_ = m.store.CreateOutage(res.MonitorID, "down", message)
+						}()
 						go m.store.CreateEvent(res.MonitorID, "down", message)
+						m.notifier.Enqueue(notifications.NotificationEvent{
+							MonitorID:   res.MonitorID,
+							MonitorName: mon.GetName(),
+							MonitorURL:  mon.GetTargetURL(),
+							Type:        notifications.EventDown,
+							Message:     message,
+							Time:        res.Timestamp,
+						})
 						log.Printf("Monitor %s is DOWN: %s", res.MonitorID, message)
 					} else if !active && res.Status {
 						// DOWN -> UP
+						go m.store.CloseOutage(res.MonitorID)
 						go m.store.CreateEvent(res.MonitorID, "recovered", "Monitor recovered")
+						m.notifier.Enqueue(notifications.NotificationEvent{
+							MonitorID:   res.MonitorID,
+							MonitorName: mon.GetName(),
+							MonitorURL:  mon.GetTargetURL(),
+							Type:        notifications.EventUp,
+							Message:     "Monitor Recovered",
+							Time:        res.Timestamp,
+						})
 						log.Printf("Monitor %s RECOVERED", res.MonitorID)
 					}
 
@@ -238,11 +290,24 @@ func (m *Manager) resultProcessor() {
 					if res.Status {
 						if !wasDegraded && isDegraded {
 							// Normal -> Degraded
+							go func() {
+								_ = m.store.CloseOutage(res.MonitorID)
+								_ = m.store.CreateOutage(res.MonitorID, "degraded", "High latency detected (>"+strconv.FormatInt(threshold, 10)+"ms)")
+							}()
 							go m.store.CreateEvent(res.MonitorID, "degraded", "High latency detected (>"+strconv.FormatInt(threshold, 10)+"ms)")
+							m.notifier.Enqueue(notifications.NotificationEvent{
+								MonitorID:   res.MonitorID,
+								MonitorName: mon.GetName(),
+								MonitorURL:  mon.GetTargetURL(),
+								Type:        notifications.EventDegraded,
+								Message:     "High latency detected (> " + strconv.FormatInt(threshold, 10) + "ms)",
+								Time:        res.Timestamp,
+							})
 						} else if wasDegraded && !isDegraded {
 							// Degraded -> Normal (Optional: Log it? Or just let it be silent?)
 							// For now, let's just log "recovered" from degradation?
 							// Or maybe "Latency normalized"?
+							go m.store.CloseOutage(res.MonitorID)
 							go m.store.CreateEvent(res.MonitorID, "recovered", "Latency normalized")
 						}
 					}
@@ -325,7 +390,7 @@ func (m *Manager) Sync() {
 
 		if _, exists := m.monitors[dbM.ID]; !exists {
 			// Start new monitor passing the JobQueue
-			mon := NewMonitor(dbM.ID, dbM.URL, interval, m.jobQueue)
+			mon := NewMonitor(dbM.ID, dbM.Name, dbM.URL, interval, m.jobQueue)
 			// ...
 
 			// Hydrate history from DB

@@ -97,6 +97,12 @@ func NewRouter(manager *uptime.Manager, store *db.Store) http.Handler {
 			maintenanceH := NewMaintenanceHandler(store)
 			protected.Get("/maintenance", maintenanceH.GetMaintenance)
 			protected.Post("/maintenance", maintenanceH.CreateMaintenance)
+
+			// Notification Channels
+			notificationH := NewNotificationChannelsHandler(store)
+			protected.Get("/notifications/channels", notificationH.GetChannels)
+			protected.Post("/notifications/channels", notificationH.CreateChannel)
+			protected.Delete("/notifications/channels/{id}", notificationH.DeleteChannel)
 		})
 	})
 

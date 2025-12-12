@@ -132,6 +132,17 @@ func (s *Store) migrate() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_monitor_events_monitor_id ON monitor_events(monitor_id);
 
+	CREATE TABLE IF NOT EXISTS monitor_outages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		monitor_id TEXT NOT NULL,
+		type TEXT NOT NULL,
+		summary TEXT,
+		start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+		end_time DATETIME,
+		FOREIGN KEY(monitor_id) REFERENCES monitors(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_monitor_outages_monitor_id ON monitor_outages(monitor_id);
+
 	CREATE TABLE IF NOT EXISTS status_pages (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		slug TEXT UNIQUE NOT NULL,
@@ -168,6 +179,15 @@ func (s *Store) migrate() error {
 	);
 	INSERT OR IGNORE INTO settings (key, value) VALUES ('latency_threshold', '1000');
 	CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
+	
+	CREATE TABLE IF NOT EXISTS notification_channels (
+		id TEXT PRIMARY KEY,
+		type TEXT NOT NULL,
+		name TEXT NOT NULL,
+		config TEXT NOT NULL, -- JSON
+		enabled BOOLEAN DEFAULT TRUE,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 	if _, err := s.db.Exec(query); err != nil {
 		return err
@@ -197,7 +217,8 @@ func (s *Store) Reset() error {
 
 	tables := []string{
 		"users", "sessions", "groups", "monitors", "monitor_checks",
-		"monitor_events", "status_pages", "api_keys", "settings",
+		"monitor_events", "status_pages", "api_keys", "settings", "monitor_outages",
+		"notification_channels",
 	}
 
 	for _, table := range tables {
@@ -260,6 +281,89 @@ func (s *Store) CreateEvent(monitorID, eventType, message string) error {
 	_, err := s.db.Exec("INSERT INTO monitor_events (monitor_id, type, message) VALUES (?, ?, ?)",
 		monitorID, eventType, message)
 	return err
+}
+
+// Monitor Outages
+
+type MonitorOutage struct {
+	ID          int64      `json:"id"`
+	MonitorID   string     `json:"monitorId"`
+	Type        string     `json:"type"`
+	Summary     string     `json:"summary"`
+	StartTime   time.Time  `json:"startTime"`
+	EndTime     *time.Time `json:"endTime"`
+	MonitorName string     `json:"monitorName"` // Joined
+	GroupName   string     `json:"groupName"`   // Joined
+	GroupID     string     `json:"groupId"`     // Joined
+}
+
+func (s *Store) CreateOutage(monitorID, eventType, summary string) error {
+	_, err := s.db.Exec("INSERT INTO monitor_outages (monitor_id, type, summary) VALUES (?, ?, ?)",
+		monitorID, eventType, summary)
+	return err
+}
+
+func (s *Store) CloseOutage(monitorID string) error {
+	// Close any active outages for this monitor
+	_, err := s.db.Exec("UPDATE monitor_outages SET end_time = CURRENT_TIMESTAMP WHERE monitor_id = ? AND end_time IS NULL", monitorID)
+	return err
+}
+
+func (s *Store) GetActiveOutages() ([]MonitorOutage, error) {
+	query := `
+		SELECT o.id, o.monitor_id, o.type, o.summary, o.start_time, m.name, g.name, g.id
+		FROM monitor_outages o
+		JOIN monitors m ON o.monitor_id = m.id
+		JOIN groups g ON m.group_id = g.id
+		WHERE o.end_time IS NULL
+		ORDER BY o.start_time DESC
+	`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var outages []MonitorOutage
+	for rows.Next() {
+		var o MonitorOutage
+		if err := rows.Scan(&o.ID, &o.MonitorID, &o.Type, &o.Summary, &o.StartTime, &o.MonitorName, &o.GroupName, &o.GroupID); err != nil {
+			return nil, err
+		}
+		outages = append(outages, o)
+	}
+	return outages, nil
+}
+
+func (s *Store) GetResolvedOutages(limit int) ([]MonitorOutage, error) {
+	query := `
+		SELECT o.id, o.monitor_id, o.type, o.summary, o.start_time, o.end_time, m.name, g.name, g.id
+		FROM monitor_outages o
+		JOIN monitors m ON o.monitor_id = m.id
+		JOIN groups g ON m.group_id = g.id
+		WHERE o.end_time IS NOT NULL
+		ORDER BY o.end_time DESC
+		LIMIT ?
+	`
+	rows, err := s.db.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var outages []MonitorOutage
+	for rows.Next() {
+		var o MonitorOutage
+		var endTime sql.NullTime
+		if err := rows.Scan(&o.ID, &o.MonitorID, &o.Type, &o.Summary, &o.StartTime, &endTime, &o.MonitorName, &o.GroupName, &o.GroupID); err != nil {
+			return nil, err
+		}
+		if endTime.Valid {
+			o.EndTime = &endTime.Time
+		}
+		outages = append(outages, o)
+	}
+	return outages, nil
 }
 
 // GetMonitors returns all monitors
@@ -708,6 +812,46 @@ func (s *Store) GetSetting(key string) (string, error) {
 
 func (s *Store) SetSetting(key, value string) error {
 	_, err := s.db.Exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value)
+	return err
+}
+
+// Notification Channels
+
+type NotificationChannel struct {
+	ID        string    `json:"id"`
+	Type      string    `json:"type"`
+	Name      string    `json:"name"`
+	Config    string    `json:"config"` // JSON string
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+func (s *Store) CreateNotificationChannel(c NotificationChannel) error {
+	_, err := s.db.Exec("INSERT INTO notification_channels (id, type, name, config, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		c.ID, c.Type, c.Name, c.Config, c.Enabled, time.Now())
+	return err
+}
+
+func (s *Store) GetNotificationChannels() ([]NotificationChannel, error) {
+	rows, err := s.db.Query("SELECT id, type, name, config, enabled, created_at FROM notification_channels ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var channels []NotificationChannel
+	for rows.Next() {
+		var c NotificationChannel
+		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &c.Config, &c.Enabled, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		channels = append(channels, c)
+	}
+	return channels, nil
+}
+
+func (s *Store) DeleteNotificationChannel(id string) error {
+	_, err := s.db.Exec("DELETE FROM notification_channels WHERE id = ?", id)
 	return err
 }
 

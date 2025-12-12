@@ -65,58 +65,7 @@ export interface Incident {
     affectedGroups: string[];
 }
 
-interface MonitorStore {
-    groups: Group[];
-    incidents: Incident[];
-    channels: NotificationChannel[];
-    user: User | null;
-    isAuthChecked: boolean;
 
-    // Actions
-    checkAuth: () => Promise<void>;
-    login: (username: string, password: string) => Promise<boolean>;
-    logout: () => Promise<void>;
-
-    // CRUD
-    fetchPublicStatus: () => Promise<void>;
-    fetchOverview: () => Promise<void>;
-    fetchMonitors: (groupId?: string) => Promise<void>;
-    addGroup: (name: string) => Promise<void>;
-    updateGroup: (id: string, name: string) => Promise<void>;
-    deleteGroup: (id: string) => Promise<void>;
-    addMonitor: (name: string, url: string, groupName: string, interval?: number) => Promise<void>;
-    updateMonitor: (id: string, updates: Partial<Monitor>) => void;
-    deleteMonitor: (id: string) => Promise<void>;
-
-    addIncident: (incident: Omit<Incident, 'id' | 'createdAt' | 'type'>) => void;
-    addMaintenance: (maintenance: Omit<Incident, 'id' | 'createdAt' | 'type' | 'severity'>) => void;
-    resolveIncident: (id: string) => void;
-    fetchIncidents: () => Promise<void>;
-    addChannel: (channel: Omit<NotificationChannel, 'id'>) => void;
-    updateChannel: (id: string, updates: Partial<NotificationChannel>) => void;
-    deleteChannel: (id: string) => void;
-
-    updateUser: (data: { password?: string; timezone?: string }) => Promise<void>;
-
-    // Status Pages
-    fetchStatusPages: () => Promise<StatusPage[]>;
-    toggleStatusPage: (slug: string, publicStatus: boolean, title?: string, groupId?: string) => Promise<void>;
-    fetchPublicStatusBySlug: (slug: string) => Promise<any>;
-
-    // API Keys
-    fetchAPIKeys: () => Promise<APIKey[]>;
-    createAPIKey: (name: string) => Promise<string | null>;
-    deleteAPIKey: (id: number) => Promise<void>;
-    resetDatabase: () => Promise<boolean>;
-
-    // Settings
-    settings: Settings | null;
-    fetchSettings: () => Promise<void>;
-    updateSettings: (settings: Partial<Settings>) => Promise<void>;
-
-    // State
-    overview: OverviewGroup[];
-}
 
 export interface OverviewGroup {
     id: string;
@@ -142,10 +91,13 @@ export interface SystemIncident {
     id: string;
     monitorId: string;
     monitorName: string;
+    groupName: string;
+    groupId: string;
     type: 'down' | 'degraded';
     message: string;
     startedAt: string;
     resolvedAt?: string;
+    duration: string;
 }
 
 export interface APIKey {
@@ -175,7 +127,7 @@ interface MonitorStore {
     fetchOverview: () => Promise<void>;
     fetchMonitors: (groupId?: string) => Promise<void>;
     fetchSystemEvents: () => Promise<void>;
-    addGroup: (name: string) => Promise<void>;
+    addGroup: (name: string) => Promise<string | undefined>;
     updateGroup: (id: string, name: string) => Promise<void>;
     deleteGroup: (id: string) => Promise<void>;
     addMonitor: (name: string, url: string, groupName: string, interval?: number) => Promise<void>;
@@ -185,9 +137,11 @@ interface MonitorStore {
     addIncident: (incident: Omit<Incident, 'id' | 'createdAt' | 'type'>) => void;
     addMaintenance: (maintenance: Omit<Incident, 'id' | 'createdAt' | 'type' | 'severity'>) => void;
     resolveIncident: (id: string) => void;
-    addChannel: (channel: Omit<NotificationChannel, 'id'>) => void;
-    updateChannel: (id: string, updates: Partial<NotificationChannel>) => void;
-    deleteChannel: (id: string) => void;
+    fetchIncidents: () => Promise<void>;
+    addChannel: (channel: Omit<NotificationChannel, 'id' | 'enabled'>) => Promise<void>;
+    // updateChannel: (id: string, updates: Partial<NotificationChannel>) => void; // Not supported yet
+    deleteChannel: (id: string) => Promise<void>;
+    fetchChannels: () => Promise<void>;
 
     updateUser: (data: { password?: string; timezone?: string }) => Promise<void>;
 
@@ -426,17 +380,22 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             }
             const group = await res.json();
             set((state) => ({ groups: [...(state.groups || []), { ...group, monitors: [] }] }));
+
+            // Refresh sidebar overview immediately
+            get().fetchOverview();
+
             toast({
                 title: "Group Created",
                 description: `Group "${name}" created successfully.`,
-                className: "bg-green-950 border-green-900 text-green-100",
             });
+            return group.id;
         } catch (error: any) {
             toast({
                 title: "Failed to create group",
                 description: error.message,
                 variant: "destructive",
             });
+            return undefined;
         }
     },
 
@@ -459,7 +418,6 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             toast({
                 title: "Group Updated",
                 description: `Group "${name}" updated successfully.`,
-                className: "bg-blue-950 border-blue-900 text-blue-100",
             });
         } catch (error: any) {
             toast({
@@ -657,18 +615,59 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
         }
     },
 
-    addChannel: (channel) => set((state) => ({
-        channels: [...state.channels, { ...channel, id: Math.random().toString(36).substr(2, 9) }]
-    })),
     resolveIncident: (id) => set((state) => ({
         incidents: state.incidents.map(inc => inc.id === id ? { ...inc, status: 'resolved' as const } : inc)
     })),
-    updateChannel: (id, updates) => set((state) => ({
-        channels: state.channels.map(ch => ch.id === id ? { ...ch, ...updates } : ch)
-    })),
-    deleteChannel: (id) => set((state) => ({
-        channels: state.channels.filter(ch => ch.id !== id)
-    })),
+
+    fetchChannels: async () => {
+        try {
+            const res = await fetch("/api/notifications/channels", { credentials: "include" });
+            if (res.ok) {
+                const data = await res.json();
+                set({ channels: data.channels || [] });
+            }
+        } catch (e) {
+            console.error("Failed to fetch channels", e);
+        }
+    },
+
+    addChannel: async (channel) => {
+        try {
+            // Ensure enabled is true by default
+            const payload = { ...channel, enabled: true };
+            const res = await fetch("/api/notifications/channels", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                credentials: "include"
+            });
+            if (res.ok) {
+                toast({ title: "Channel Added", description: "Notification channel added successfully." });
+                get().fetchChannels();
+            } else {
+                toast({ title: "Error", description: "Failed to add channel.", variant: "destructive" });
+            }
+        } catch (e) {
+            console.error(e);
+            toast({ title: "Error", description: "Failed to add channel.", variant: "destructive" });
+        }
+    },
+
+    deleteChannel: async (id) => {
+        try {
+            const res = await fetch(`/api/notifications/channels/${id}`, {
+                method: "DELETE",
+                credentials: "include"
+            });
+            if (res.ok) {
+                toast({ title: "Channel Deleted", description: "Channel deleted successfully." });
+                get().fetchChannels();
+            }
+        } catch (e) {
+            console.error(e);
+            toast({ title: "Error", description: "Failed to delete channel.", variant: "destructive" });
+        }
+    },
 
     fetchAPIKeys: async () => {
         try {

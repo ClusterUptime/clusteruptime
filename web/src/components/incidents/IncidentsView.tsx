@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useMonitorStore, Incident, SystemIncident } from "@/lib/store";
 import { Calendar, CheckCircle2, ArrowDownCircle, AlertTriangle, Clock } from "lucide-react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 function IncidentCard({ incident }: { incident: Incident }) {
@@ -41,19 +41,20 @@ function SystemEventRow({ event, active }: { event: SystemIncident; active: bool
     const colorClass = isDown ? "text-red-500" : "text-yellow-500";
     const bgBadge = isDown ? "bg-red-500/10 text-red-500 hover:bg-red-500/20" : "bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20";
 
-    // Duration Calculation
-    let durationStr = "Just now";
-    if (active) {
-        // Active duration (roughly)
+    // Duration Calculation (Client-side for active to be reactive, Server provided for history)
+    let durationStr = event.duration || "Just now";
+
+    // Override for active to be live (optional, but good UX)
+    if (active && event.startedAt) {
         const start = new Date(event.startedAt).getTime();
         const now = new Date().getTime();
         const diffMins = Math.floor((now - start) / 60000);
         durationStr = diffMins < 1 ? "Just now" : `${diffMins}m ongoing`;
-    } else if (event.resolvedAt) {
-        const diffMs = new Date(event.resolvedAt).getTime() - new Date(event.startedAt).getTime();
-        const mins = Math.floor(diffMs / 60000);
-        if (mins < 60) durationStr = `${mins}m`;
-        else durationStr = `${Math.floor(mins / 60)}h ${mins % 60}m`;
+        if (diffMins >= 60) {
+            const h = Math.floor(diffMins / 60);
+            const m = diffMins % 60;
+            durationStr = `${h}h ${m}m ongoing`;
+        }
     }
 
     return (
@@ -69,12 +70,20 @@ function SystemEventRow({ event, active }: { event: SystemIncident; active: bool
                 </div>
 
                 <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                        <span className={cn("font-medium text-sm text-foreground", !active && "text-muted-foreground line-through decoration-border")}>
+                    <div className="flex items-center gap-2 text-sm">
+                        {event.groupName && (
+                            <>
+                                <Link to={`/?group=${event.groupId}`} className="text-muted-foreground hover:text-foreground hover:underline transition-colors">
+                                    {event.groupName}
+                                </Link>
+                                <span className="text-muted-foreground/30">/</span>
+                            </>
+                        )}
+                        <span className={cn("font-medium text-foreground", !active && "text-muted-foreground line-through decoration-border")}>
                             {event.monitorName}
                         </span>
                         {active && (
-                            <Badge variant="secondary" className={cn("rounded-sm px-1.5 py-0 text-[10px] font-medium uppercase tracking-wider border-0", bgBadge)}>
+                            <Badge variant="secondary" className={cn("ml-2 rounded-sm px-1.5 py-0 text-[10px] font-medium uppercase tracking-wider border-0", bgBadge)}>
                                 {event.type}
                             </Badge>
                         )}

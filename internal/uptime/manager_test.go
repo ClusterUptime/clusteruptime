@@ -87,7 +87,65 @@ func TestManager_Stop(t *testing.T) {
 	}
 
 	m.Stop()
-	// Manager Stop doesn't clear the map, but stops the monitors.
 	// We can't easily check if they are stopped via public API unless we check valid status?
 	// But it closes channels.
+}
+
+func TestManager_OutageLogic(t *testing.T) {
+	m, s := newTestManager(t)
+	s.CreateGroup(db.Group{ID: "g-test", Name: "Test Group"})
+
+	// 1. Create Monitor
+	mon := db.Monitor{
+		ID:       "m-fail",
+		GroupID:  "g-test",
+		Name:     "Failing Monitor",
+		URL:      "http://127.0.0.1:48201", // Closed port, connection refused
+		Active:   true,
+		Interval: 1, // Fast interval
+	}
+	s.CreateMonitor(mon)
+	m.Start()
+
+	// Wait for check cycle (Failed)
+	// Poll for result instead of fixed sleep
+	var active []db.MonitorOutage
+	var err error
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		active, err = s.GetActiveOutages()
+		if err == nil && len(active) > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if err != nil {
+		t.Fatalf("GetActiveOutages failed: %v", err)
+	}
+
+	if len(active) == 0 {
+		// Debug: check events
+		events, _ := s.GetMonitorEvents("m-fail", 10)
+		t.Logf("Events: %+v", events)
+		t.Fatal("Expected active outage within 5s, got 0")
+	}
+	if active[0].MonitorID != "m-fail" {
+		t.Errorf("Expected outage for m-fail, got %s", active[0].MonitorID)
+	}
+
+	// 3. Verify Legacy Event Created (Regression Test)
+	events, err := s.GetMonitorEvents("m-fail", 10)
+	if err != nil {
+		t.Fatalf("GetMonitorEvents failed: %v", err)
+	}
+	if len(events) == 0 {
+		t.Error("Expected legacy monitor event, got 0")
+	} else {
+		if events[0].Type != "down" {
+			t.Errorf("Expected legacy event type 'down', got '%s'", events[0].Type)
+		}
+	}
+
+	m.Stop()
 }

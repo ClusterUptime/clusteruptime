@@ -16,6 +16,7 @@ type Status struct {
 
 type Monitor struct {
 	id       string
+	name     string
 	url      string
 	interval time.Duration
 	history  []Status
@@ -24,9 +25,10 @@ type Monitor struct {
 	jobQueue chan<- Job
 }
 
-func NewMonitor(id, url string, interval time.Duration, jobQueue chan<- Job) *Monitor {
+func NewMonitor(id, name, url string, interval time.Duration, jobQueue chan<- Job) *Monitor {
 	return &Monitor{
 		id:       id,
+		name:     name,
 		url:      url,
 		interval: interval,
 		history:  make([]Status, 0, 50), // Keep last 50 in memory
@@ -99,6 +101,10 @@ func (m *Monitor) GetHistory() []Status {
 	dst := make([]Status, len(m.history))
 	copy(dst, m.history)
 	return dst
+}
+
+func (m *Monitor) GetName() string {
+	return m.name
 }
 
 func (m *Monitor) GetTargetURL() string {
