@@ -132,7 +132,7 @@ interface MonitorStore {
 
     // Actions
     checkAuth: () => Promise<void>;
-    login: (username: string, password: string) => Promise<boolean>;
+    login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => Promise<void>;
 
     // CRUD
@@ -294,12 +294,21 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                     }
                 });
                 get().fetchOverview();
-                return true;
+                return { success: true };
             }
+
+            if (res.status === 401) {
+                return { success: false, error: "Invalid username or password" };
+            }
+            if (res.status >= 500) {
+                return { success: false, error: "Server error. Please try again later." };
+            }
+            return { success: false, error: "Login failed" };
+
         } catch (e) {
             console.error(e);
+            return { success: false, error: "Network connection error" };
         }
-        return false;
     },
 
     logout: async () => {

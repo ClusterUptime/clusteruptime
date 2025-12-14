@@ -5,27 +5,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Activity, Lock } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Activity, Lock, AlertCircle } from "lucide-react";
 
 export function LoginPage() {
     const navigate = useNavigate();
     const { login } = useMonitorStore();
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        setError(null);
 
-        const success = await login(username, password);
+        const result = await login(username, password);
         setIsLoading(false);
 
-        if (success) {
+        if (result.success) {
             navigate('/dashboard');
         } else {
-            // Show error (would be better with a toast, but this is fine for now)
-            alert("Login failed. Default is admin / password");
+            setError(result.error || "An unexpected error occurred");
         }
     };
 
@@ -55,6 +57,15 @@ export function LoginPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="grid gap-4">
+                            {error && (
+                                <Alert variant="destructive" className="bg-red-900/10 border-red-900/50 text-red-400">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertTitle>Error</AlertTitle>
+                                    <AlertDescription>
+                                        {error}
+                                    </AlertDescription>
+                                </Alert>
+                            )}
                             <div className="grid gap-2">
                                 <Label htmlFor="username">Username</Label>
                                 <Input

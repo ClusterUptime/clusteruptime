@@ -11,9 +11,15 @@ import (
 //go:embed dist/*
 var dist embed.FS
 
-// Handler serves the compiled frontend assets. It falls back to index.html for SPA routes.
+// Handler serves the compiled frontend assets from the embedded dist directory.
 func Handler() http.Handler {
-	sub, err := fs.Sub(dist, "dist")
+	return NewHandler(dist)
+}
+
+// NewHandler serves assets from the provided filesystem.
+// It expects the filesystem to contain a "dist" directory.
+func NewHandler(assets fs.FS) http.Handler {
+	sub, err := fs.Sub(assets, "dist")
 	if err != nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "frontend assets not found - build the web app", http.StatusNotFound)
