@@ -51,6 +51,7 @@ type MonitorDTO struct {
 	URL       string         `json:"url"`
 	Status    string         `json:"status"`
 	Latency   int64          `json:"latency"`
+	Interval  int            `json:"interval"`
 	History   []HistoryPoint `json:"history"`
 	Events    []MonitorEvent `json:"events"`
 	LastCheck string         `json:"lastCheck"`
@@ -136,7 +137,7 @@ func (h *UptimeHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 					latency = last.Latency
-					lastCheck = last.Timestamp.Format("15:04:05")
+					lastCheck = last.Timestamp.Format(time.RFC3339)
 
 					for _, h := range history {
 						s := "down"
@@ -170,6 +171,7 @@ func (h *UptimeHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 				URL:       meta.URL,
 				Status:    statusStr,
 				Latency:   latency,
+				Interval:  meta.Interval,
 				History:   historyPoints,
 				LastCheck: lastCheck,
 				Events:    getEventsForDTO(h.store, meta.ID),
@@ -191,7 +193,7 @@ func (h *UptimeHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (h *UptimeHandler) GetMonitorUptimeStats(w http.ResponseWriter, r *http.Request) {
+func (h *UptimeHandler) GetMonitorUptime(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		http.Error(w, "ID required", http.StatusBadRequest)

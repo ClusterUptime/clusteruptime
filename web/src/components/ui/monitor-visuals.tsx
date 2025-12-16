@@ -1,8 +1,9 @@
 import { Badge } from "@/components/ui/badge";
-import { Monitor } from "@/lib/store";
+import { Monitor, HistoryPoint } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { ArrowUp, ArrowDown, AlertTriangle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useMemo } from "react";
 
 export const StatusBadge = ({ status }: { status: Monitor['status'] }) => {
     if (status === 'up') {
@@ -29,16 +30,52 @@ export const StatusBadge = ({ status }: { status: Monitor['status'] }) => {
     );
 };
 
-export const UptimeHistory = ({ history }: { history: Monitor['history'] }) => {
-    const safeHistory = history || [];
+export const UptimeHistory = ({ history, interval = 60 }: { history: Monitor['history'], interval?: number }) => {
     const LIMIT = 30;
-    const emptyCount = Math.max(0, LIMIT - safeHistory.length);
-    const emptySlots = Array(emptyCount).fill(null);
-    const displaySlots = [...emptySlots, ...safeHistory].slice(-LIMIT);
+    const now = Date.now();
+    const safeInterval = interval || 60; // Default to 60s if 0 or undefined
+    const checkWindow = safeInterval * 1000; // Interval in ms
+    // Tolerance for matching a check to a slot (e.g. +/- 50% of interval)
+    // We actually want to find if ANY check occurred in the slot window.
+    // The slot window i represents time range: [now - (i+1)*checkWindow, now - i*checkWindow]
+
+    const displaySlots = useMemo(() => {
+        const slots: (HistoryPoint | null)[] = [];
+        // We want 30 slots, from oldest (index 0) to newest (index 29)
+        // Wait, standard visualization: right is newest.
+        // So displaySlots[29] is "now". displaySlots[0] is "limit intervals ago".
+
+        for (let i = LIMIT - 1; i >= 0; i--) {
+            // Calculate start and end of this time bucket
+            // i=0 corresponds to "now" (most recent bucket) in loop logic? 
+            // Let's use i as "number of intervals ago".
+            // i=0 => [now - interval, now]
+            // i=29 => [now - 30*interval, now - 29*interval]
+
+            const endTime = now - (i * checkWindow);
+            const startTime = endTime - checkWindow;
+
+            // Find a history point in this range
+            // History is ordered. We can search or filter.
+            // Since N is small, filter is fine.
+            const match = history?.find(h => {
+                const t = new Date(h.timestamp).getTime();
+                return t >= startTime && t <= endTime;
+            });
+
+            slots.push(match || null);
+        }
+        // The loop above pushes "most recent (i=0)" LAST if i goes from LIMIT-1 down to 0?
+        // Wait:
+        // i=29 (start of loop): endTime = now - 29*window. This is oldest.
+        // i=0 (end of loop): endTime = now. This is newest.
+        // So slots will be [oldest, ..., newest]. Correct.
+        return slots;
+    }, [history, safeInterval, now]);
 
     return (
         <TooltipProvider delayDuration={0}>
-            <div className="flex gap-1 h-6 items-end w-full max-w-[360px]" title="Last 30 checks">
+            <div className="flex gap-1 h-6 items-end w-full max-w-[360px]">
                 {displaySlots.map((slot, i) => (
                     <Tooltip key={i}>
                         <TooltipTrigger asChild>
@@ -52,7 +89,7 @@ export const UptimeHistory = ({ history }: { history: Monitor['history'] }) => {
                                 )}
                             />
                         </TooltipTrigger>
-                        {slot && (
+                        {slot ? (
                             <TooltipContent className="text-xs bg-slate-900 border-slate-800 text-slate-200">
                                 <div className="font-semibold mb-1">
                                     {new Date(slot.timestamp).toLocaleTimeString()}
@@ -74,6 +111,10 @@ export const UptimeHistory = ({ history }: { history: Monitor['history'] }) => {
                                 <div className="opacity-70">
                                     Latency: {slot.latency}ms
                                 </div>
+                            </TooltipContent>
+                        ) : (
+                            <TooltipContent className="text-xs bg-slate-900 border-slate-800 text-slate-200">
+                                <div className="font-semibold text-muted-foreground">No Data</div>
                             </TooltipContent>
                         )}
                     </Tooltip>

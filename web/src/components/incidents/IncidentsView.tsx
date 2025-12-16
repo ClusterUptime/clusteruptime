@@ -5,9 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { useMonitorStore, Incident, SystemIncident } from "@/lib/store";
 import { Calendar, CheckCircle2, ArrowDownCircle, AlertTriangle, Clock } from "lucide-react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
-function IncidentCard({ incident }: { incident: Incident }) {
+function IncidentCard({ incident, timezone }: { incident: Incident, timezone?: string }) {
     const isMaintenance = incident.type === 'maintenance';
 
     return (
@@ -28,13 +28,13 @@ function IncidentCard({ incident }: { incident: Incident }) {
                 </div>
             </div>
             <div className="text-right text-xs text-muted-foreground tabular-nums">
-                {new Date(incident.startTime).toLocaleString()}
+                {formatDate(incident.startTime, timezone)}
             </div>
         </div>
     )
 }
 
-function SystemEventRow({ event, active }: { event: SystemIncident; active: boolean }) {
+function SystemEventRow({ event, active, timezone }: { event: SystemIncident; active: boolean; timezone?: string }) {
     const isDown = event.type === 'down';
 
     // Minimalist Icon & Color Logic
@@ -97,7 +97,12 @@ function SystemEventRow({ event, active }: { event: SystemIncident; active: bool
             <div className="flex items-center gap-4 text-xs text-muted-foreground tabular-nums">
                 <span className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
                     <Clock className="w-3 h-3" />
-                    {new Date(event.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {active ?
+                        // For active items, maybe showing relative time or time started? 
+                        // User wants local time.
+                        formatDate(event.startedAt, timezone).split(',')[1]?.trim() || formatDate(event.startedAt, timezone)
+                        : formatDate(event.startedAt, timezone)
+                    }
                 </span>
                 <span className={cn("font-medium", active ? colorClass : "text-emerald-500")}>
                     {durationStr}
@@ -108,7 +113,7 @@ function SystemEventRow({ event, active }: { event: SystemIncident; active: bool
 }
 
 export function IncidentsView() {
-    const { incidents, systemEvents, fetchSystemEvents, fetchIncidents } = useMonitorStore();
+    const { incidents, systemEvents, fetchSystemEvents, fetchIncidents, user } = useMonitorStore();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const { pathname } = useLocation();

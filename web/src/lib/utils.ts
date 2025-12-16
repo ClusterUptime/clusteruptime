@@ -78,15 +78,27 @@ export const getEnvironmentGroup = (env: Environment | "mixed") => {
   return "Non-prod";
 };
 
-export const relativeTimeFromIso = (iso: string) => {
-  if (!iso) return "";
-  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  const value = new Date(iso).getTime();
-  const diff = value - Date.now();
-  const minutes = Math.round(diff / 1000 / 60);
-  if (Math.abs(minutes) < 60) return formatter.format(minutes, "minute");
-  const hours = Math.round(minutes / 60);
-  if (Math.abs(hours) < 24) return formatter.format(hours, "hour");
-  const days = Math.round(hours / 24);
-  return formatter.format(days, "day");
+// Timezone-aware date formatting
+export const formatDate = (date: string | Date | number, timezone: string = 'UTC') => {
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) {
+    return typeof date === 'string' ? date : '';
+  }
+
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: timezone,
+      timeZoneName: 'longOffset'
+    }).format(d);
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return String(date);
+  }
 };

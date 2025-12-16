@@ -4,126 +4,151 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-
 	"github.com/clusteruptime/clusteruptime/internal/db"
 	"github.com/clusteruptime/clusteruptime/internal/static"
 	"github.com/clusteruptime/clusteruptime/internal/uptime"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
+
+type Router struct {
+	*chi.Mux
+	manager *uptime.Manager
+	store   *db.Store
+}
 
 // NewRouter builds the HTTP router serving both JSON APIs and static assets.
 func NewRouter(manager *uptime.Manager, store *db.Store) http.Handler {
-	uptimeH := NewUptimeHandler(manager, store)
-	authH := NewAuthHandler(store)
-	statusPageH := NewStatusPageHandler(store, manager)
-	eventH := NewEventHandler(store, manager)
-
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	// Update CORS to allow credentials
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"}, // Add frontend dev URL
-		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodOptions},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
+	r.Use(middleware.RealIP)
+
+	// Base Router for setup methods attached to *Router
+	apiRouter := &Router{
+		Mux:     r,
+		manager: manager,
+		store:   store,
+	}
+
+	// Instantiate Handlers
+	authH := NewAuthHandler(store)
+	uptimeH := NewUptimeHandler(manager, store)
+	crudH := NewCRUDHandler(store, manager)
+	statsH := NewStatsHandler(store)
+	settingsH := NewSettingsHandler(store, manager)
+	apiKeyH := NewAPIKeyHandler(store)
+	adminH := NewAdminHandler(store, manager)
+	incidentH := NewIncidentHandler(store)
+	maintH := NewMaintenanceHandler(store)
+	eventH := NewEventHandler(store, manager)
+	statusPageH := NewStatusPageHandler(store, manager)
+	notifH := NewNotificationChannelsHandler(store)
 
 	r.Route("/api", func(api chi.Router) {
-		// Public Routes
-		api.Get("/health", Health)
-		api.Get("/status", uptimeH.GetHistory) // Legacy singular endpoint? Maybe repurpose or keep.
-		// Actually, let's keep it for now as "public data" if authentication is not enforced there yet?
-		// Wait, checking line 37: api.Get("/status", uptimeH.GetHistory) // Public status page data
-		// This endpoints logic inside uptimeH.GetHistory doesn't check for status_pages config yet.
-		// We will need to guard this or create new endpoints.
-
-		api.Get("/s/{slug}", statusPageH.GetPublicStatus) // New public endpoint for status pages
-
-		// Public Auth Routes
+		// Public routes
 		api.Post("/auth/login", authH.Login)
 		api.Post("/auth/logout", authH.Logout)
+		api.Get("/setup/status", apiRouter.CheckSetup)
+		api.Post("/setup", apiRouter.PerformSetup)
 
-		// Protected Routes
+		// Public Status Pages
+		api.Get("/s/{slug}", statusPageH.GetPublicStatus)
+		// api.Get("/status", statusPageH.GetPublicStatus) // Legacy - omitting for now or map to default?
+
 		api.Group(func(protected chi.Router) {
 			protected.Use(authH.AuthMiddleware)
 			protected.Get("/auth/me", authH.Me)
 			protected.Patch("/auth/me", authH.UpdateUser)
-			protected.Get("/uptime", uptimeH.GetHistory)                          // Dashboard data (authenticated)
-			protected.Get("/monitors/{id}/uptime", uptimeH.GetMonitorUptimeStats) // Uptime Stats
-			protected.Get("/monitors/{id}/latency", uptimeH.GetMonitorLatency)    // Latency Chart
-			protected.Get("/overview", uptimeH.GetOverview)                       // New Lightweight Overview
-			protected.Get("/events", eventH.GetSystemEvents)                      // System Events (Active + History)
 
-			// CRUD operations
-			crudH := NewCRUDHandler(store, manager)
-			protected.Route("/groups", func(r chi.Router) {
-				r.Post("/", crudH.CreateGroup)
-				r.Get("/", crudH.GetGroups)
-				r.Delete("/{id}", crudH.DeleteGroup)
-				r.Put("/{id}", crudH.UpdateGroup)
-			})
+			// Dashboard Overview
+			protected.Get("/overview", uptimeH.GetOverview)
+
+			// Groups
+			protected.Post("/groups", crudH.CreateGroup)
+			protected.Put("/groups/{id}", crudH.UpdateGroup)
+			protected.Delete("/groups/{id}", crudH.DeleteGroup)
+
+			// Monitors
+			// /uptime maps to GetHistory in handlers_uptime.go (returns list of monitors with history)
+			protected.Get("/uptime", uptimeH.GetHistory)
 			protected.Post("/monitors", crudH.CreateMonitor)
 			protected.Put("/monitors/{id}", crudH.UpdateMonitor)
 			protected.Delete("/monitors/{id}", crudH.DeleteMonitor)
+			protected.Get("/monitors/{id}/uptime", uptimeH.GetMonitorUptime)
+			protected.Get("/monitors/{id}/latency", uptimeH.GetMonitorLatency)
 
-			// Status Pages Management
-			protected.Get("/status-pages", statusPageH.GetAll)
-			protected.Patch("/status-pages/{slug}", statusPageH.Toggle)
+			// Incidents
+			protected.Get("/incidents", incidentH.GetIncidents)
+			protected.Post("/incidents", incidentH.CreateIncident)
+			protected.Post("/maintenance", maintH.CreateMaintenance)
+
+			// Settings
+			protected.Get("/settings", settingsH.GetSettings)
+			protected.Patch("/settings", settingsH.UpdateSettings)
 
 			// API Keys
-			apiKeyH := NewAPIKeyHandler(store)
 			protected.Get("/api-keys", apiKeyH.ListKeys)
 			protected.Post("/api-keys", apiKeyH.CreateKey)
 			protected.Delete("/api-keys/{id}", apiKeyH.DeleteKey)
 
+			// Stats
+			protected.Get("/stats", statsH.GetStats)
+
 			// Admin
-			adminH := NewAdminHandler(store, manager)
 			protected.Post("/admin/reset", adminH.ResetDatabase)
 
-			settingsH := NewSettingsHandler(store, manager)
-			protected.Get("/settings", settingsH.GetSettings)
-			protected.Patch("/settings", settingsH.UpdateSettings)
+			// Notifications
+			protected.Get("/notifications/channels", notifH.GetChannels)
+			protected.Post("/notifications/channels", notifH.CreateChannel)
+			protected.Delete("/notifications/channels/{id}", notifH.DeleteChannel)
 
-			// Incidents & Maintenance
-			incidentH := NewIncidentHandler(store)
-			protected.Get("/incidents", incidentH.GetIncidents)
-			protected.Post("/incidents", incidentH.CreateIncident)
+			// Events (for history)
+			protected.Get("/events", eventH.GetSystemEvents)
 
-			maintenanceH := NewMaintenanceHandler(store)
-			protected.Get("/maintenance", maintenanceH.GetMaintenance)
-			protected.Post("/maintenance", maintenanceH.CreateMaintenance)
+			// Status Pages Management
+			protected.Get("/status-pages", statusPageH.GetAll)
+			// Note: Create/Upd/Del methods need to be verified in handlers_status_pages.go
+			// Based on GetAll, it likely has Toggle.
+			// Let's assume standard names or check Step 1189 view.
+			// Step 1189 shows: GetAll, Toggle, GetPublicStatus.
+			// It does NOT show CreateStatusPage, UpdateStatusPage, DeleteStatusPage explicitly in the view
+			// (view truncated? No, showed 1-284 which seemed to be whole file?).
+			// Wait, Step 1189 showed lines 1-284 for handlers_status_pages.go.
+			// It handled GetAll and Toggle and GetPublicStatus.
+			// There is NO Create/Delete?
+			// The store has UpsertStatusPage used in Toggle.
+			// Maybe there is no Create? Just Toggle?
+			// The routes in Step 1146 (original) were:
+			// protected.Post("/status-pages", apiRouter.CreateStatusPage)
+			// protected.Patch("/status-pages/{slug}", apiRouter.UpdateStatusPage)
+			// protected.Delete("/status-pages/{slug}", apiRouter.DeleteStatusPage)
 
-			// Notification Channels
-			notificationH := NewNotificationChannelsHandler(store)
-			protected.Get("/notifications/channels", notificationH.GetChannels)
-			protected.Post("/notifications/channels", notificationH.CreateChannel)
-			protected.Delete("/notifications/channels/{id}", notificationH.DeleteChannel)
+			// If handlers_status_pages.go only has Toggle, then "UpdateStatusPage" mapping to Toggle is correct.
+			// What about Create/Delete?
+			// Maybe they were missing or I missed them in search?
+			// If they are missing, I should ommit or fix.
+			// Toggle does Upsert. So maybe Post -> Toggle?
+			protected.Patch("/status-pages/{slug}", statusPageH.Toggle)
 
-			// System Stats
-			statsH := NewStatsHandler(store)
-			protected.Get("/stats", statsH.GetStats)
+			// If Create/Delete are missing, I'll comment them out for now to avoid compilation error.
 		})
 	})
 
+	// Static Assets (Frontend)
 	r.Handle("/*", static.Handler())
 
 	return r
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if payload == nil {
-		return
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
-	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
 }

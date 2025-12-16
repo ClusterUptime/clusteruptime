@@ -129,6 +129,7 @@ interface MonitorStore {
     channels: NotificationChannel[];
     user: User | null;
     isAuthChecked: boolean;
+    isSetupComplete: boolean;
 
     // Actions
     checkAuth: () => Promise<void>;
@@ -175,6 +176,10 @@ interface MonitorStore {
     updateSettings: (settings: Partial<Settings>) => Promise<void>;
 
     fetchSystemStats: () => Promise<SystemStats | null>;
+
+    // Setup
+    checkSetupStatus: () => Promise<boolean>;
+    performSetup: (data: any) => Promise<boolean>;
 }
 
 export const useMonitorStore = create<MonitorStore>((set, get) => ({
@@ -185,9 +190,48 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     channels: [],
     user: null,
     isAuthChecked: false,
+    isSetupComplete: false,
     settings: null,
 
     // Actions
+    checkSetupStatus: async () => {
+        try {
+            const res = await fetch("/api/setup/status");
+            if (res.ok) {
+                const data = await res.json();
+                set({ isSetupComplete: data.isSetup });
+                return data.isSetup;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+        return false;
+    },
+
+    performSetup: async (data: any) => {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+            const res = await fetch("/api/setup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (res.ok) {
+                set({ isSetupComplete: true });
+                return true;
+            } else {
+                return false;
+            }
+        } catch (e) {
+            console.error("Setup failed or timed out", e);
+            return false;
+        }
+    },
     fetchSystemEvents: async () => {
         try {
             const res = await fetch("/api/events", { credentials: "include" });
@@ -260,7 +304,8 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                         name: data.user.username,
                         email: "admin@clusteruptime.com",
                         avatar: data.user.avatar || "https://github.com/shadcn.png",
-                        isAuthenticated: true
+                        isAuthenticated: true,
+                        timezone: data.user.timezone
                     },
                     isAuthChecked: true
                 });
@@ -793,5 +838,6 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             console.error("Failed to fetch system stats:", error);
         }
         return null;
-    }
+    },
+
 }));

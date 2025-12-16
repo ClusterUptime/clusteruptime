@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SystemTab } from "./SystemTab";
+import { SelectTimezone } from "@/components/ui/select-timezone";
 
 import { useState, useEffect } from "react";
 import { useMonitorStore } from "@/lib/store";
@@ -49,7 +50,7 @@ function ResetDatabaseDialog() {
                 <AlertDialogTrigger asChild>
                     <Button variant="destructive">Reset Everything</Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent className="bg-slate-900 border-slate-800 text-slate-100">
+                <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -58,8 +59,8 @@ function ResetDatabaseDialog() {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel className="bg-slate-800 text-white hover:bg-slate-700 hover:text-white border-slate-700">Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleReset} className="bg-red-600 hover:bg-red-700 text-white">
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                             Reset Everything
                         </AlertDialogAction>
                     </AlertDialogFooter>
@@ -97,7 +98,7 @@ function GeneralSettings() {
     };
 
     return (
-        <Card className="bg-slate-900/50 border-slate-800">
+        <Card>
             <CardHeader>
                 <CardTitle>General Settings</CardTitle>
                 <CardDescription>Global configuration for your monitors.</CardDescription>
@@ -105,7 +106,7 @@ function GeneralSettings() {
             <CardContent className="space-y-4">
                 <div className="grid gap-2">
                     <Label htmlFor="latency">Latency Threshold (ms)</Label>
-                    <div className="text-sm text-slate-400 mb-2">
+                    <div className="text-sm text-muted-foreground mb-2">
                         Response times higher than this value will mark the service as "Degraded".
                     </div>
                     <Input
@@ -113,12 +114,12 @@ function GeneralSettings() {
                         type="number"
                         value={threshold}
                         onChange={(e) => setThreshold(e.target.value)}
-                        className="bg-slate-950 border-slate-800 max-w-[200px]"
+                        className="max-w-[200px]"
                     />
                 </div>
                 <div className="grid gap-2">
                     <Label htmlFor="retention">Data Retention (Days)</Label>
-                    <div className="text-sm text-slate-400 mb-2">
+                    <div className="text-sm text-muted-foreground mb-2">
                         Monitor checks older than this will be automatically deleted.
                     </div>
                     <Input
@@ -126,7 +127,7 @@ function GeneralSettings() {
                         type="number"
                         value={retention}
                         onChange={(e) => setRetention(e.target.value)}
-                        className="bg-slate-950 border-slate-800 max-w-[200px]"
+                        className="max-w-[200px]"
                     />
                 </div>
                 <Button onClick={handleSave} className="w-fit">Save Settings</Button>
@@ -146,6 +147,14 @@ export function SettingsView() {
     const { user, updateUser } = useMonitorStore();
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
+
+    const [selectedTimezone, setSelectedTimezone] = useState(user?.timezone || 'UTC');
+
+    useEffect(() => {
+        if (user?.timezone) {
+            setSelectedTimezone(user.timezone);
+        }
+    }, [user?.timezone]);
 
     const handleUpdateProfile = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -178,7 +187,7 @@ export function SettingsView() {
             <Separator />
 
             <div className="space-y-6">
-                <Card className="bg-slate-900/20 border-slate-800">
+                <Card>
                     <CardHeader>
                         <CardTitle>Account Settings</CardTitle>
                         <CardDescription>
@@ -189,24 +198,15 @@ export function SettingsView() {
                         <form onSubmit={handleUpdateProfile} className="space-y-4">
                             <div className="grid gap-2">
                                 <Label>Username</Label>
-                                <Input value={user?.name || ''} disabled className="bg-slate-900 border-slate-800 max-w-md" />
+                                <Input value={user?.name || ''} disabled className="max-w-md" />
                             </div>
                             <div className="grid gap-2">
                                 <Label>Timezone</Label>
-                                <select
-                                    name="timezone"
-                                    defaultValue={user?.timezone || 'UTC'}
-                                    className="flex h-9 w-full max-w-md rounded-md border border-slate-800 bg-slate-900 px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    <option value="UTC">UTC</option>
-                                    <option value="America/New_York">America/New_York (EST)</option>
-                                    <option value="America/Chicago">America/Chicago (CST)</option>
-                                    <option value="America/Denver">America/Denver (MST)</option>
-                                    <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
-                                    <option value="Europe/London">Europe/London (GMT)</option>
-                                    <option value="Europe/Paris">Europe/Paris (CET)</option>
-                                    <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
-                                </select>
+                                <input type="hidden" name="timezone" value={selectedTimezone} />
+                                <SelectTimezone
+                                    value={selectedTimezone}
+                                    onValueChange={setSelectedTimezone}
+                                />
                             </div>
 
                             <Separator />
@@ -217,7 +217,7 @@ export function SettingsView() {
                                     name="password"
                                     type="password"
                                     placeholder="Leave empty to keep current"
-                                    className="bg-slate-900 border-slate-800 max-w-md"
+                                    className="max-w-md"
                                 />
                             </div>
 
@@ -232,10 +232,10 @@ export function SettingsView() {
 
                 <SystemTab />
 
-                <Card className="bg-red-950/10 border-red-900/50">
+                <Card className="border-destructive/50">
                     <CardHeader>
-                        <CardTitle className="text-red-500">Danger Zone</CardTitle>
-                        <CardDescription className="text-red-400/60">
+                        <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                        <CardDescription>
                             Destructive actions that cannot be undone.
                         </CardDescription>
                     </CardHeader>

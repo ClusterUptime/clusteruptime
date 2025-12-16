@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
-import { Routes, Route, useParams, useLocation, useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { Routes, Route, useParams, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { useEffect as usePageEffect } from "react"; // Alias to avoid conflict if I used it inside Dashboard, effectively just need simple imports
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
 import { Separator } from "./components/ui/separator";
 import { useMonitorStore } from "./lib/store";
+import { formatDate } from "./lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./components/ui/card";
 import { StatusBadge, UptimeHistory } from "./components/ui/monitor-visuals";
 import { Button } from "./components/ui/button";
@@ -23,11 +24,30 @@ import { LoginPage } from "./components/auth/LoginPage";
 import { SettingsView } from "./components/settings/SettingsView";
 import { StatusPagesView } from "./components/status-pages/StatusPagesView";
 import { APIKeysPage } from "./components/settings/APIKeysPage";
-import { Navigate } from "react-router-dom"; // Import the new sheet
 import { Toaster } from "@/components/ui/toaster";
+
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 function MonitorCard({ monitor }: { monitor: any }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const { user } = useMonitorStore();
+
+  const formattedFullDate = formatDate(monitor.lastCheck, user?.timezone);
+
+  // Format just the time (e.g. 9:41 PM)
+  const timeOnly = useMemo(() => {
+    if (!monitor.lastCheck || monitor.lastCheck === 'Never') return monitor.lastCheck || '';
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: user?.timezone,
+      }).format(new Date(monitor.lastCheck));
+    } catch (e) {
+      return monitor.lastCheck;
+    }
+  }, [monitor.lastCheck, user?.timezone]);
+
 
   return (
     <>
@@ -43,13 +63,24 @@ function MonitorCard({ monitor }: { monitor: any }) {
         </div>
 
         <div className="flex-none hidden sm:block">
-          <UptimeHistory history={monitor.history} />
+          <UptimeHistory history={monitor.history} interval={monitor.interval} />
         </div>
 
         <div className="flex items-center gap-3 w-[160px] justify-end shrink-0">
           <div className="text-right whitespace-nowrap">
             <div className="text-xs font-mono text-muted-foreground">{monitor.latency}ms</div>
-            <div className="text-[10px] text-muted-foreground opacity-50">{monitor.lastCheck}</div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-[10px] text-muted-foreground opacity-50 hover:opacity-100 cursor-help transition-opacity">
+                    {timeOnly}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent className="bg-slate-900 border-slate-800 text-xs text-slate-200">
+                  <p>{formattedFullDate}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <StatusBadge status={monitor.status} />
         </div>
@@ -334,15 +365,45 @@ function AdminLayout() {
   )
 }
 
-const App = () => {
-  const { checkAuth } = useMonitorStore();
+import { SetupPage } from "./components/setup/SetupPage";
 
+const App = () => {
+  const { checkAuth, checkSetupStatus, isSetupComplete } = useMonitorStore(); // Use global state
+  const [loading, setLoading] = useState(true);
+
+  // Initial Check
   useEffect(() => {
-    checkAuth();
+    const init = async () => {
+      const done = await checkSetupStatus();
+      // state is updated in store by checkSetupStatus
+      if (done) {
+        checkAuth();
+      }
+      setLoading(false);
+    };
+    init();
   }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // If setup is NOT complete, force setup page for all routes except static assets if any
+  if (!isSetupComplete) {
+    return (
+      <Routes>
+        <Route path="*" element={<SetupPage />} />
+      </Routes>
+    )
+  }
 
   return (
     <Routes>
+      <Route path="/setup" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/status/:slug" element={<StatusPage />} />
       <Route path="/*" element={<AdminLayout />} />

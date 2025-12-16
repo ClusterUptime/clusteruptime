@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Monitor, useMonitorStore } from "@/lib/store";
+import { formatDate } from "@/lib/utils";
 import {
     Sheet,
     SheetContent,
@@ -45,7 +46,7 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
     const [url, setUrl] = useState(monitor.url);
     const [interval, setInterval] = useState(monitor.interval || 60);
     const [stats, setStats] = useState({ uptime24h: 100, uptime7d: 100, uptime30d: 100 });
-    const [latencyData, setLatencyData] = useState([]);
+    const [latencyData, setLatencyData] = useState<any[]>([]);
     const [timeRange, setTimeRange] = useState("1h");
 
     useEffect(() => {
@@ -81,109 +82,116 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                         }))
                         .sort((a: any, b: any) => a.timestamp - b.timestamp);
 
-                    const filledData = fillDataGaps(sortedData, range);
+                    const filledData = processChartData(sortedData, range);
                     setLatencyData(filledData);
                 }
             })
             .catch(err => console.error("Failed to fetch latency", err));
     }
 
-    const fillDataGaps = (data: any[], range: string) => {
-        if (data.length === 0) return [];
+    const processChartData = (data: any[], range: string) => {
+        const now = Date.now();
+        let step = 60 * 60 * 1000;
+        let start = now;
 
-        const now = new Date().getTime();
-        let step = 60 * 60 * 1000; // Default 1 hour
-        let start = now - 24 * 60 * 60 * 1000;
-
+        // Determine step size and start time
         if (range === "1h") {
             step = 60 * 1000; // 1 minute
-            start = now - 60 * 60 * 1000;
-        } else if (range === "7d") {
-            step = 60 * 60 * 1000; // 1 hour
-            start = now - 7 * 24 * 60 * 60 * 1000;
-        } else if (range === "30d") {
-            step = 24 * 60 * 60 * 1000; // 1 day (Backend groups by day? Wait, verify store.go logic. Store forces hour for > 25. Let's stick to hour? 30d * 24 = 720 points. Acceptable.)
-            // Actually, for 30d, visual gap might be better if per hour? 
-            // Let's assume backend returns hourly for 30d too as per previous verify.
-            step = 60 * 60 * 1000;
-            start = now - 30 * 24 * 60 * 60 * 1000;
+            start = now - (60 * 60 * 1000);
         }
 
         const filled = [];
-        const dataMap = new Map(data.map(d => {
-            // Round timestamp to nearest step to key match? 
-            // Or just check tolerance.
-            // Simple approach: Iterate time steps. If we have a point close enough, use it.
-            return [d.timestamp, d];
-        }));
+        let current = start;
 
-        // Optimize: Pointer walk
+        // Create a map for quick lookup of data points within a time window
+        // Optimization: Since data is sorted, we could do this in a single pass,
+        // but a filter per bucket is easier to read and performance is fine for < 2000 points.
+        // Let's do a slightly optimized single pass.
+
         let dataIndex = 0;
-        // Align start to next step boundary to mesh with backend? 
-        // Backend groups by pure strftime/time.
-        // Let's just walk from calculated Start to Now.
 
-        for (let t = start; t <= now; t += step) {
-            // Find point within half a step tolerance
-            let found = null;
+        while (current <= now) {
+            const bucketEnd = current + step;
+            const bucketPoints = [];
 
-            // Advance dataIndex until we pass t + step/2
+            // Collect all points belonging to this bucket [current, current + step)
+            // We assume data is sorted by timestamp asc
             while (dataIndex < data.length) {
-                const point = data[dataIndex];
-                const diff = Math.abs(point.timestamp - t);
-                if (diff < step / 2) {
-                    found = point;
+                const p = data[dataIndex];
+                if (p.timestamp < current) {
+                    // Skip old data (shouldn't happen if sorted and start is correct, but safety)
+                    dataIndex++;
+                    continue;
+                }
+                if (p.timestamp >= bucketEnd) {
+                    // Point belongs to next bucket
                     break;
                 }
-                if (point.timestamp > t + step / 2) {
-                    break; // Passed
-                }
+                bucketPoints.push(p);
                 dataIndex++;
             }
 
-            if (found) {
-                if (found.failed) {
-                    filled.push({ ...found, latency: null });
+            if (bucketPoints.length > 0) {
+                // Calculate average latency
+                const validPoints = bucketPoints.filter(p => !p.failed && p.latency !== null);
+
+                // Determine status for the bucket
+                // If any point failed, does the whole bucket fail? 
+                // Or do we visualize it as "some failures"? 
+                // User wants "average". 
+                // Let's say if > 50% failed, mark as failed? Or if ANY failed?
+                // Visualizing specific failures is handled by red bars (reference areas).
+                // For the line, we just want the average latency of successful checks.
+
+                if (validPoints.length > 0) {
+                    const totalLatency = validPoints.reduce((sum, p) => sum + p.latency, 0);
+                    const avgLatency = Math.round(totalLatency / validPoints.length);
+                    filled.push({ timestamp: current, latency: avgLatency });
                 } else {
-                    filled.push(found);
+                    // All points in this bucket were failures
+                    filled.push({ timestamp: current, latency: null, failed: true });
                 }
             } else {
-                filled.push({ timestamp: t, latency: null, failed: false }); // Gap is just gap, not failure? Or unknown? Assume unknown/gap.
+                // No data in this bucket -> Gap
+                filled.push({ timestamp: current, latency: null });
             }
+
+            current += step;
         }
 
         return filled;
     }
 
+    // Identify continuous failure zones for the red bars
+    // Updated to work with processed data? 
+    // Actually, distinct failures might be lost in aggregation if we only look at the averaged bucket.
+    // Ideally, we keep the raw data for failure zones, OR we compute failure zones from raw data before aggregation.
+    // The current implementation uses 'latencyData' which IS the processed data.
+    // If a bucket has 'failed: true', it counts as a failure zone.
     const getFailureZones = (data: any[]) => {
         const zones = [];
-        let start = null;
-
-        // Helper to determine step size roughly for zone width
-        // Assume consistent step from timeRange logic or measure it?
-        // Let's just use adjacent points.
+        let zoneStart = null;
 
         for (let i = 0; i < data.length; i++) {
             const point = data[i];
+            // Check for explicit failure flag from aggregation
             if (point.failed) {
-                if (start === null) start = point.timestamp;
+                if (zoneStart === null) {
+                    zoneStart = point.timestamp;
+                }
             } else {
-                if (start !== null) {
-                    // Close zone
-                    // Extend end to cover the full step? 
-                    // AreaChart points are usually "starts" of intervals or instant points.
-                    // Let's make the zone span from start timestamp to previous failed timestamp.
-                    zones.push({ start, end: data[i - 1].timestamp });
-                    start = null;
+                if (zoneStart !== null) {
+                    zones.push({ start: zoneStart, end: data[i - 1].timestamp });
+                    zoneStart = null;
                 }
             }
         }
-        // Close trailing zone
-        if (start !== null) {
-            zones.push({ start, end: data[data.length - 1].timestamp });
+        if (zoneStart !== null) {
+            zones.push({ start: zoneStart, end: data[data.length - 1].timestamp });
         }
         return zones;
     };
+
 
     const handleSave = () => {
         updateMonitor(monitor.id, { name, url, interval });
@@ -195,13 +203,22 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
         return val.toFixed(2) + "%";
     }
 
-    const formatXAxis = (tickItem: string) => {
+    const formatXAxis = (tickItem: string | number) => {
         const date = new Date(tickItem);
-        const tz = user?.timezone || undefined;
+        const tz = user?.timezone || 'UTC';
 
-        if (timeRange === "1h") return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz });
-        if (timeRange === "24h") return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: tz });
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: tz });
+        if (timeRange === "1h" || timeRange === "24h") {
+            return new Intl.DateTimeFormat("en-US", {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: tz
+            }).format(date);
+        }
+        return new Intl.DateTimeFormat("en-US", {
+            month: 'short',
+            day: 'numeric',
+            timeZone: tz
+        }).format(date);
     }
 
     const getUptimeColor = (val: number) => {
@@ -254,7 +271,7 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                                     <BarChart className="w-4 h-4 text-blue-400" /> Response Time
                                 </h3>
                                 <div className="flex bg-slate-900 rounded-lg p-0.5 border border-slate-800">
-                                    {["1h", "24h", "7d", "30d"].map((r) => (
+                                    {["1h"].map((r) => (
                                         <button
                                             key={r}
                                             onClick={() => setTimeRange(r)}
@@ -283,20 +300,16 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                                             fontSize={10}
                                             tickFormatter={formatXAxis}
                                             minTickGap={30}
-                                            domain={[
-                                                () => {
-                                                    const now = new Date().getTime();
-                                                    if (timeRange === "1h") return now - 60 * 60 * 1000;
-                                                    if (timeRange === "24h") return now - 24 * 60 * 60 * 1000;
-                                                    if (timeRange === "7d") return now - 7 * 24 * 60 * 60 * 1000;
-                                                    if (timeRange === "30d") return now - 30 * 24 * 60 * 60 * 1000;
-                                                    return now - 24 * 60 * 60 * 1000;
-                                                },
-                                                () => new Date().getTime()
-                                            ]}
-                                            allowDataOverflow={true}
                                             type="number"
                                             scale="time"
+                                            domain={[
+                                                (dataMin: number) => {
+                                                    const now = Date.now();
+                                                    if (timeRange === "1h") return now - 60 * 60 * 1000;
+                                                    return dataMin;
+                                                },
+                                                (dataMax: number) => Date.now()
+                                            ]}
                                         />
                                         <YAxis
                                             stroke="#64748b"
@@ -310,34 +323,22 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                                             itemStyle={{ color: '#e2e8f0', fontSize: '12px' }}
                                             labelStyle={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}
                                             labelFormatter={(label) => {
-                                                if (!user?.timezone) return new Date(label).toLocaleString();
-                                                return new Date(label).toLocaleString('en-US', { timeZone: user.timezone });
+                                                return formatDate(label, user?.timezone);
                                             }}
-                                            formatter={(value: any) => [value != null ? `${value}ms` : 'Down', 'Latency']}
+                                            formatter={(value: any, name: any, props: any) => {
+                                                if (props.payload.failed) return ['Failed', 'Status'];
+                                                return [value != null ? `${value}ms` : 'No Data', 'Latency'];
+                                            }}
                                         />
 
-                                        {/* Render red zones for downtime */}
-                                        {latencyData.map((entry: any, index: number) => {
-                                            if (entry.failed) {
-                                                // Find width of this failure slot based on previous/next or step? 
-                                                // Simplified: Render a ReferenceArea for this specific timestamp +/- half step? 
-                                                // Better: If we have contiguous failures, merge them?
-                                                // For now, let's just render a ReferenceArea for each failed point covering its slot.
-                                                // But ReferenceArea needs x1, x2.
-                                                // We need to pre-calculate zones outside JSX for cleaner render.
-                                                return null;
-                                            }
-                                            return null;
-                                        })}
-
+                                        {/* Failure Zones */}
                                         {getFailureZones(latencyData).map((zone: any, i: number) => (
                                             <ReferenceArea
                                                 key={i}
                                                 x1={zone.start}
                                                 x2={zone.end}
                                                 fill="#ef4444"
-                                                fillOpacity={0.1}
-                                                strokeOpacity={0}
+                                                fillOpacity={0.3}
                                             />
                                         ))}
 
@@ -348,8 +349,8 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                                             strokeWidth={2}
                                             fillOpacity={1}
                                             fill="url(#colorLatency)"
-                                            isAnimationActive={true}
-                                            connectNulls={false} // Ensure line breaks
+                                            isAnimationActive={false}
+                                            connectNulls={timeRange === '1h'}
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>
@@ -369,9 +370,10 @@ export function MonitorDetailsSheet({ monitor, open, onOpenChange }: MonitorDeta
                                             event.type === 'down' ? 'bg-red-500' : 'bg-yellow-500'
                                             }`} />
                                         <div className="flex flex-col gap-1">
+
                                             <span className="text-xs text-slate-500 flex items-center gap-1">
                                                 <Clock className="w-3 h-3" />
-                                                {new Date(event.timestamp).toLocaleString()}
+                                                {formatDate(event.timestamp, user?.timezone)}
                                             </span>
                                             <p className="text-sm text-slate-200">{event.message}</p>
                                         </div>

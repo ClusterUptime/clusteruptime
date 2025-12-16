@@ -36,11 +36,64 @@ func TestAPIKeyIntegrationFlow(t *testing.T) {
 	// Helper for requests
 	baseURL := ts.URL + "/api"
 
+	// 1.1 Edge Case: Short Password
+	badSetupPayload := map[string]interface{}{
+		"username": "admin",
+		"password": "123", // Too short
+		"timezone": "UTC",
+	}
+	badBody, _ := json.Marshal(badSetupPayload)
+	resp, err := client.Post(baseURL+"/setup", "application/json", bytes.NewBuffer(badBody))
+	if err != nil {
+		t.Fatalf("Bad setup req failed: %v", err)
+	}
+	if resp.StatusCode != 400 {
+		t.Fatalf("Expected 400 for short password, got %d", resp.StatusCode)
+	}
+
+	// 1.5. Perform Setup (Create Admin User)
+	setupPayload := map[string]interface{}{
+		"username":       "admin",
+		"password":       "Password123!", // Strong Password
+		"timezone":       "UTC",
+		"createDefaults": true,
+	}
+	setupBody, _ := json.Marshal(setupPayload)
+	resp, err = client.Post(baseURL+"/setup", "application/json", bytes.NewBuffer(setupBody))
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		t.Fatalf("Setup failed: %d %s", resp.StatusCode, buf.String())
+	}
+
+	// 1.5b Verify Status is now true
+	resp, err = client.Get(baseURL + "/setup/status")
+	if err != nil {
+		t.Fatalf("Failed to check setup status: %v", err)
+	}
+	var statusAfter map[string]bool
+	json.NewDecoder(resp.Body).Decode(&statusAfter)
+	if !statusAfter["isSetup"] {
+		t.Fatal("Expected isSetup to be true after setup")
+	}
+
+	// 1.6 Edge Case: Setup Again (Should fail with 403 Forbidden)
+	resp, err = client.Post(baseURL+"/setup", "application/json", bytes.NewBuffer(setupBody))
+	if err != nil {
+		t.Fatalf("Re-setup req failed: %v", err)
+	}
+	if resp.StatusCode != 403 {
+		t.Fatalf("Expected 403 Forbidden for re-setup, got %d", resp.StatusCode)
+	}
+
 	// 2. Login as Admin
-	// Note: NewStore defaults admin/password if empty
-	loginPayload := map[string]string{"username": "admin", "password": "password"}
+	// Note: NewStore defaults admin/password if empty - NO LONGER TRUE. Setup required.
+	loginPayload := map[string]string{"username": "admin", "password": "Password123!"}
 	loginBody, _ := json.Marshal(loginPayload)
-	resp, err := client.Post(baseURL+"/auth/login", "application/json", bytes.NewBuffer(loginBody))
+	resp, err = client.Post(baseURL+"/auth/login", "application/json", bytes.NewBuffer(loginBody))
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}

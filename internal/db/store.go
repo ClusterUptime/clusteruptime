@@ -501,25 +501,12 @@ func (s *Store) GetUptimeStats(monitorID string) (float64, float64, float64, err
 
 func (s *Store) seed() error {
 	// Seed Users
-	var userCount int
-	row := s.db.QueryRow("SELECT COUNT(*) FROM users")
-	if err := row.Scan(&userCount); err != nil {
-		return err
-	}
-
-	if userCount == 0 {
-		log.Println("Creating default admin user...")
-		hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
-		_, err := s.db.Exec("INSERT INTO users (username, password_hash, timezone) VALUES (?, ?, ?)", "admin", string(hash), "UTC")
-		if err != nil {
-			return err
-		}
-		log.Println("Default user created: username='admin', password='password'")
-	}
+	// Seed Users - REMOVED. handled by setup flow.
+	// Logic moved to API check.
 
 	// Seed Groups
 	var groupCount int
-	row = s.db.QueryRow("SELECT COUNT(*) FROM groups")
+	row := s.db.QueryRow("SELECT COUNT(*) FROM groups")
 	if err := row.Scan(&groupCount); err != nil {
 		return err
 	}
@@ -533,22 +520,9 @@ func (s *Store) seed() error {
 		log.Println("Default group 'Default' (id: g-default) created")
 	}
 
-	// Seed Monitors
-	var monitorCount int
-	row = s.db.QueryRow("SELECT COUNT(*) FROM monitors")
-	if err := row.Scan(&monitorCount); err != nil {
-		return err
-	}
-
-	if monitorCount == 0 {
-		log.Println("Seeding default monitor...")
-		_, err := s.db.Exec("INSERT INTO monitors (id, group_id, name, url, active, interval_seconds) VALUES (?, ?, ?, ?, ?, ?)",
-			"m-example-monitor-default", "g-default", "Example Monitor", "https://google.com", true, 60)
-		if err != nil {
-			return err
-		}
-		log.Println("Default monitor created")
-	}
+	// Seed Monitors - REMOVED.
+	// We no longer create "Example Monitor" by default in the store.
+	// The Setup Wizard creates specific default monitors (Google, GitHub, Cloudflare).
 
 	return nil
 }
@@ -599,6 +573,23 @@ func (s *Store) GetUser(id int64) (*User, error) {
 	// Redact password
 	u.Password = ""
 	return &u, nil
+}
+
+// HasUsers checks if any users exist in the database.
+func (s *Store) HasUsers() (bool, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	return count > 0, err
+}
+
+// CreateUser creates a new user.
+func (s *Store) CreateUser(username, password, timezone string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec("INSERT INTO users (username, password_hash, timezone) VALUES (?, ?, ?)", username, string(hash), timezone)
+	return err
 }
 
 func (s *Store) UpdateUser(id int64, password, timezone string) error {
