@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMonitorStore, NotificationChannel } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trash2, Slack, Mail, Webhook, MessageSquare, BellOff } from "lucide-react";
@@ -6,9 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { ChannelDetailsSheet } from "./ChannelDetailsSheet";
 
 export function NotificationsView() {
-    const { channels } = useMonitorStore();
+    const { channels, fetchChannels } = useMonitorStore();
     const [selectedChannel, setSelectedChannel] = useState<NotificationChannel | null>(null);
     const [detailsOpen, setDetailsOpen] = useState(false);
+
+    useEffect(() => {
+        fetchChannels();
+    }, []);
 
     const handleChannelClick = (channel: NotificationChannel) => {
         setSelectedChannel(channel);

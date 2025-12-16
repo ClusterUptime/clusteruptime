@@ -1,5 +1,8 @@
 # ClusterUptime ⚡️
 
+[![CI](https://github.com/clusteruptime/clusteruptime/actions/workflows/ci.yml/badge.svg)](https://github.com/clusteruptime/clusteruptime/actions/workflows/ci.yml)
+[![Docker](https://github.com/clusteruptime/clusteruptime/actions/workflows/docker.yml/badge.svg)](https://github.com/clusteruptime/clusteruptime/actions/workflows/docker.yml)
+
 **The ultra-lightweight, open-source uptime monitor.**  
 Blazing fast performance with a stunning modern design.
 

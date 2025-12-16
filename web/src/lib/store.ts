@@ -131,6 +131,8 @@ interface MonitorStore {
     isAuthChecked: boolean;
     isSetupComplete: boolean;
 
+    apiKeys: APIKey[];
+
     // Actions
     checkAuth: () => Promise<void>;
     login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -191,6 +193,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
     user: null,
     isAuthChecked: false,
     isSetupComplete: false,
+    apiKeys: [],
     settings: null,
 
     // Actions
@@ -743,6 +746,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
             const res = await fetch("/api/api-keys", { credentials: "include" });
             if (res.ok) {
                 const data = await res.json();
+                set({ apiKeys: data.keys || [] });
                 return data.keys || [];
             }
         } catch (error) {

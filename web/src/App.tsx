@@ -24,6 +24,7 @@ import { LoginPage } from "./components/auth/LoginPage";
 import { SettingsView } from "./components/settings/SettingsView";
 import { StatusPagesView } from "./components/status-pages/StatusPagesView";
 import { APIKeysPage } from "./components/settings/APIKeysPage";
+import { CreateAPIKeySheet } from "./components/settings/CreateAPIKeySheet";
 import { Toaster } from "@/components/ui/toaster";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -336,6 +337,8 @@ function AdminLayout() {
               <CreateChannelSheet />
             ) : isSettings ? (
               null
+            ) : isApiKeys ? (
+              <CreateAPIKeySheet />
             ) : ( // Dashboard
               <>
                 {!activeGroup && <CreateGroupSheet onCreate={addGroup} />}

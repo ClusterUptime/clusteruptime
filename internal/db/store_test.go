@@ -232,3 +232,92 @@ func TestNotificationChannels(t *testing.T) {
 		t.Errorf("Expected 0 channels, got %d", len(channels))
 	}
 }
+
+func TestCascadingDeletion(t *testing.T) {
+	s := newTestStore(t)
+
+	// 1. Create Group
+	err := s.CreateGroup(Group{ID: "g-del", Name: "To Delete"})
+	if err != nil {
+		t.Fatalf("CreateGroup failed: %v", err)
+	}
+
+	// 2. Create Monitor
+	m := Monitor{
+		ID:       "m-del",
+		GroupID:  "g-del",
+		Name:     "Monitor To Delete",
+		URL:      "http://example.com",
+		Interval: 60,
+	}
+	if err := s.CreateMonitor(m); err != nil {
+		t.Fatalf("CreateMonitor failed: %v", err)
+	}
+
+	// 3. Add Data (Checks & Events)
+	checks := []CheckResult{
+		{MonitorID: "m-del", Status: "up", Latency: 100, Timestamp: time.Now()},
+	}
+	if err := s.BatchInsertChecks(checks); err != nil {
+		t.Fatalf("BatchInsertChecks failed: %v", err)
+	}
+
+	if err := s.CreateEvent("m-del", "down", "It died"); err != nil {
+		t.Fatalf("CreateEvent failed: %v", err)
+	}
+
+	// Verify data exists
+	cHistory, _ := s.GetMonitorChecks("m-del", 10)
+	if len(cHistory) == 0 {
+		t.Fatal("Setup failed: no checks found")
+	}
+
+	// 4. Test Monitor Deletion Cascade
+	if err := s.DeleteMonitor("m-del"); err != nil {
+		t.Fatalf("DeleteMonitor failed: %v", err)
+	}
+
+	// Verify Data Gone
+	cHistory, _ = s.GetMonitorChecks("m-del", 10)
+	if len(cHistory) != 0 {
+		t.Errorf("Expected 0 checks after monitor deletion, got %d", len(cHistory))
+	}
+
+	// Verify Event Gone? (Need a way to check events directly or assume FK works if checks worked)
+	var eventCount int
+	s.db.QueryRow("SELECT COUNT(*) FROM monitor_events WHERE monitor_id = 'm-del'").Scan(&eventCount)
+	if eventCount != 0 {
+		t.Errorf("Expected 0 events after monitor deletion, got %d", eventCount)
+	}
+
+	// 5. Test Group Deletion Cascade
+	// Re-create monitor and data
+
+	// Need to handle unique constraints if ID reused? SQLite usually OK if deleted.
+	// Re-create Group? No, Group g-del still exists.
+
+	err = s.CreateMonitor(m)
+	if err != nil {
+		t.Fatalf("Re-create monitor failed: %v", err)
+	}
+	s.BatchInsertChecks(checks)
+
+	// Delete Group
+	if err := s.DeleteGroup("g-del"); err != nil {
+		t.Fatalf("DeleteGroup failed: %v", err)
+	}
+
+	// Verify Monitor Gone
+	monitors, _ := s.GetMonitors()
+	for _, mon := range monitors {
+		if mon.ID == "m-del" {
+			t.Error("Monitor m-del should have been deleted via cascade")
+		}
+	}
+
+	// Verify Data Gone Again
+	cHistory, _ = s.GetMonitorChecks("m-del", 10)
+	if len(cHistory) != 0 {
+		t.Errorf("Expected 0 checks after group deletion, got %d", len(cHistory))
+	}
+}

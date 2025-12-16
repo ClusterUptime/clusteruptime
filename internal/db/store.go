@@ -66,6 +66,11 @@ func NewStore(dbPath string) (*Store, error) {
 		return nil, err
 	}
 
+	// Enable Foreign Keys for Cascade Deletion
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		return nil, err
+	}
+
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
 		return nil, err

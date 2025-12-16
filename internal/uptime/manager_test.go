@@ -13,14 +13,6 @@ func newTestManager(t *testing.T) (*Manager, *db.Store) {
 		t.Fatalf("Failed to create test store: %v", err)
 	}
 
-	// Clear seeded data to have a clean state
-	// Note: We access store.db assuming we can? No, store.db is private in package db.
-	// But in store_test.go we were IN package db.
-	// Here we are in package uptime. We cannot access store.db.
-	// We should rely on public methods `Reset()` but that reseeds.
-	// Or just ignore the default monitor 'm-example-monitor-default'.
-	// Or assume "m1" is ours.
-
 	m := NewManager(store)
 	return m, store
 }
@@ -69,16 +61,20 @@ func TestManager_Sync(t *testing.T) {
 		t.Errorf("Expected interval 120s, got %s", running.GetInterval())
 	}
 
-	// Ensure default monitor is also running (seeded)
-	def := m.GetMonitor("m-example-monitor-default")
-	if def == nil {
-		t.Error("Default monitor should be running")
-	}
 }
 
 func TestManager_Stop(t *testing.T) {
-	m, _ := newTestManager(t)
-	// Seeded monitor exists.
+	m, s := newTestManager(t)
+
+	s.CreateMonitor(db.Monitor{
+		ID:       "m-stop",
+		GroupID:  "g-default",
+		Name:     "Stop Test",
+		URL:      "http://example.com",
+		Active:   true,
+		Interval: 60,
+	})
+
 	m.Sync()
 
 	count := len(m.GetAll())

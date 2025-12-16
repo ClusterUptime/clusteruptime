@@ -92,6 +92,7 @@ func (h *CRUDHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	h.manager.Sync()
 	w.WriteHeader(http.StatusOK)
 }
 

@@ -1,6 +1,7 @@
 import { SetupPage } from './SetupPage';
 import { BrowserRouter } from 'react-router-dom';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useMonitorStore } from '../../lib/store';
 
 // Define mock using vi.hoisted to ensure it's available for the factory
