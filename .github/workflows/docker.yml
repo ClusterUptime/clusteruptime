@@ -1,12 +1,13 @@
 name: Build and Publish Docker Image
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v*"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version tag (e.g. v1.0.1)"
+        required: true
+        type: string
 
 env:
   IMAGE_NAME: jesuspaz/clusteruptime
@@ -46,11 +47,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=tag
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-          flavor: |
-            suffix=-${{ matrix.arch }}
+            type=raw,value=${{ inputs.version }}
+            type=raw,value=latest
 
       - name: Build and push (${{ matrix.platform }})
         uses: docker/build-push-action@v6
@@ -87,9 +85,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=tag
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
+            type=raw,value=${{ inputs.version }}
+            type=raw,value=latest
 
       - name: Create multi-arch manifests
         run: |

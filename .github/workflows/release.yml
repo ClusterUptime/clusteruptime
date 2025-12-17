@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+      custom_version:
+        description: 'Custom version (e.g. v1.2.3). Overrides release type.'
+        required: false
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Next Version
+        id: version
+        run: |
+          # Get the latest tag, default to v0.0.0 if none
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Current version: $LATEST_TAG"
+
+          if [ -n "${{ inputs.custom_version }}" ]; then
+            NEW_TAG="${{ inputs.custom_version }}"
+          else
+            # Extract major, minor, patch
+            # Remove 'v' prefix if present
+            VERSION=${LATEST_TAG#v}
+            IFS='.' read -r major minor patch <<< "$VERSION"
+            
+            # Default to 0 if empty (handling cases like v1 or v1.0)
+            major=${major:-0}
+            minor=${minor:-0}
+            patch=${patch:-0}
+
+            case "${{ inputs.release_type }}" in
+              major)
+                major=$((major + 1))
+                minor=0
+                patch=0
+                ;;
+              minor)
+                minor=$((minor + 1))
+                patch=0
+                ;;
+              patch)
+                patch=$((patch + 1))
+                ;;
+            esac
+            NEW_TAG="v$major.$minor.$patch"
+          fi
+
+          echo "New version: $NEW_TAG"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+  trigger-docker:
+    needs: release
+    uses: ./.github/workflows/docker.yml
+    with:
+      version: ${{ needs.release.outputs.tag }}
+    secrets: inherit

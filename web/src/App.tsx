@@ -4,7 +4,9 @@ import { Routes, Route, useParams, useLocation, useNavigate, Navigate } from "re
 import { useEffect as usePageEffect } from "react"; // Alias to avoid conflict if I used it inside Dashboard, effectively just need simple imports
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "./components/ui/separator";
+
 import { useMonitorStore } from "./lib/store";
 import { formatDate } from "./lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./components/ui/card";
@@ -354,7 +356,7 @@ function AdminLayout() {
             <Breadcrumb>
               <BreadcrumbList>
                 {breadcrumbs.map((item, index) => (
-                  <React.Fragment key={item.url}>
+                  <React.Fragment key={`${item.url}-${index}`}>
                     {index > 0 && <BreadcrumbSeparator />}
                     <BreadcrumbItem>
                       {item.active ? (
@@ -394,7 +396,7 @@ function AdminLayout() {
             )}
           </div>
         </header>
-        <div className="flex-1 overflow-auto p-4 pt-0">
+        <ScrollArea className="flex-1 p-4 pt-0 h-[calc(100vh-4rem)]">
           <main className="max-w-5xl mx-auto space-y-6 py-6">
             <Routes>
               <Route path="/dashboard" element={<Dashboard />} />
@@ -408,7 +410,7 @@ function AdminLayout() {
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </main>
-        </div>
+        </ScrollArea>
       </SidebarInset>
       <Toaster />
     </SidebarProvider>

@@ -32,23 +32,23 @@ export function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4">
+        <div className="min-h-screen bg-background flex items-center justify-center p-4">
             <div className="w-full max-w-sm space-y-8">
                 <div className="flex flex-col items-center justify-center text-center space-y-2">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-900/20">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg">
                         <Activity className="h-6 w-6" />
                     </div>
                     <div className="space-y-1">
-                        <h1 className="text-2xl font-semibold tracking-tight text-white">
+                        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                             Welcome back
                         </h1>
-                        <p className="text-sm text-slate-400">
+                        <p className="text-sm text-muted-foreground">
                             Enter your credentials to access your dashboard
                         </p>
                     </div>
                 </div>
 
-                <Card className="bg-slate-900/50 border-slate-800">
+                <Card>
                     <form onSubmit={handleLogin}>
                         <CardHeader className="space-y-1">
                             <CardTitle className="text-xl">Sign in</CardTitle>
@@ -58,8 +58,8 @@ export function LoginPage() {
                         </CardHeader>
                         <CardContent className="grid gap-4">
                             {error && (
-                                <Alert variant="destructive" className="bg-red-900/10 border-red-900/50 text-red-400">
-                                    <AlertCircle className="h-4 w-4" />
+                                <Alert variant="destructive" className="bg-destructive/50 text-destructive-foreground border-destructive/50">
+                                    <AlertCircle className="h-4 w-4 text-destructive-foreground" />
                                     <AlertTitle>Error</AlertTitle>
                                     <AlertDescription>
                                         {error}
@@ -72,7 +72,6 @@ export function LoginPage() {
                                     id="username"
                                     type="text"
                                     placeholder="username"
-                                    className="bg-slate-950 border-slate-800"
                                     value={username}
                                     onChange={e => setUsername(e.target.value)}
                                     required
@@ -83,7 +82,6 @@ export function LoginPage() {
                                 <Input
                                     id="password"
                                     type="password"
-                                    className="bg-slate-950 border-slate-800"
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
                                     required
@@ -107,11 +105,7 @@ export function LoginPage() {
                     </form>
                 </Card>
 
-                <p className="px-8 text-center text-sm text-slate-500">
-                    <a href="/status" className="hover:text-slate-400 underline underline-offset-4">
-                        View Public Status Page
-                    </a>
-                </p>
+
             </div>
         </div>
     );

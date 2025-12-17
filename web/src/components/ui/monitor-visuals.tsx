@@ -75,7 +75,7 @@ export const UptimeHistory = ({ history, interval = 60 }: { history: Monitor['hi
 
     return (
         <TooltipProvider delayDuration={0}>
-            <div className="flex gap-1 h-6 items-end w-full max-w-[360px]">
+            <div className="flex gap-1 h-6 items-end w-full max-w-[500px]">
                 {displaySlots.map((slot, i) => (
                     <Tooltip key={i}>
                         <TooltipTrigger asChild>
