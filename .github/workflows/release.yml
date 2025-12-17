@@ -77,12 +77,45 @@ jobs:
           git tag ${{ steps.version.outputs.tag }}
           git push origin ${{ steps.version.outputs.tag }}
 
+      - name: Build Changelog
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configurationJson: |
+            {
+              "categories": [
+                {
+                  "title": "## 🚀 Features",
+                  "labels": ["feat", "feature"]
+                },
+                {
+                  "title": "## 🐛 Bug Fixes",
+                  "labels": ["fix", "bug"]
+                },
+                {
+                  "title": "## ⚡ Performance",
+                  "labels": ["perf"]
+                },
+                {
+                  "title": "## ♻️ Refactor",
+                  "labels": ["refactor"]
+                },
+                {
+                  "title": "## 📦 Build & Chore",
+                  "labels": ["build", "ci", "chore", "test"]
+                }
+              ],
+              "template": "#{{CHANGELOG}}"
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Release ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
+          body: ${{ steps.build_changelog.outputs.changelog }}
           draft: false
           prerelease: false
 
