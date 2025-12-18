@@ -8,15 +8,17 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/clusteruptime/clusteruptime/internal/config"
 	"github.com/clusteruptime/clusteruptime/internal/db"
 )
 
 type AuthHandler struct {
-	store *db.Store
+	store  *db.Store
+	config *config.Config
 }
 
-func NewAuthHandler(store *db.Store) *AuthHandler {
-	return &AuthHandler{store: store}
+func NewAuthHandler(store *db.Store, cfg *config.Config) *AuthHandler {
+	return &AuthHandler{store: store, config: cfg}
 }
 
 type LoginRequest struct {
@@ -57,7 +59,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		Path:     "/",
 		SameSite: http.SameSiteStrictMode,
-		// Secure: true, // TODO: Enable in production with HTTPS
+		Secure:   h.config.CookieSecure,
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{

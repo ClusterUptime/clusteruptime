@@ -71,7 +71,9 @@ func (h *MaintenanceHandler) CreateMaintenance(w http.ResponseWriter, r *http.Re
 }
 
 func (h *MaintenanceHandler) GetMaintenance(w http.ResponseWriter, r *http.Request) {
-	allEvents, err := h.store.GetIncidents()
+	// Return all maintenance for now, or maybe only active/future?
+	// Using zero time returns all history + active
+	allEvents, err := h.store.GetIncidents(time.Time{})
 	if err != nil {
 		http.Error(w, "Failed to fetch maintenance events", http.StatusInternalServerError)
 		return

@@ -340,17 +340,16 @@ func (s *Store) GetActiveOutages() ([]MonitorOutage, error) {
 	return outages, nil
 }
 
-func (s *Store) GetResolvedOutages(limit int) ([]MonitorOutage, error) {
+func (s *Store) GetResolvedOutages(since time.Time) ([]MonitorOutage, error) {
 	query := `
 		SELECT o.id, o.monitor_id, o.type, o.summary, o.start_time, o.end_time, m.name, g.name, g.id
 		FROM monitor_outages o
 		JOIN monitors m ON o.monitor_id = m.id
 		JOIN groups g ON m.group_id = g.id
-		WHERE o.end_time IS NOT NULL
+		WHERE o.end_time IS NOT NULL AND o.end_time >= ?
 		ORDER BY o.end_time DESC
-		LIMIT ?
 	`
-	rows, err := s.db.Query(query, limit)
+	rows, err := s.db.Query(query, since)
 	if err != nil {
 		return nil, err
 	}
@@ -1025,8 +1024,15 @@ func (s *Store) CreateIncident(i Incident) error {
 	return err
 }
 
-func (s *Store) GetIncidents() ([]Incident, error) {
-	rows, err := s.db.Query("SELECT id, title, description, type, severity, status, start_time, end_time, affected_groups, created_at FROM incidents ORDER BY created_at DESC")
+func (s *Store) GetIncidents(since time.Time) ([]Incident, error) {
+	query := `
+		SELECT id, title, description, type, severity, status, start_time, end_time, affected_groups, created_at 
+		FROM incidents 
+		WHERE (status != 'resolved' AND status != 'completed') 
+		OR start_time >= ? 
+		ORDER BY created_at DESC
+	`
+	rows, err := s.db.Query(query, since)
 	if err != nil {
 		return nil, err
 	}

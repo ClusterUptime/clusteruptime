@@ -71,7 +71,8 @@ func (h *IncidentHandler) CreateIncident(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *IncidentHandler) GetIncidents(w http.ResponseWriter, r *http.Request) {
-	allEvents, err := h.store.GetIncidents()
+	since := time.Now().Add(-7 * 24 * time.Hour)
+	allEvents, err := h.store.GetIncidents(since)
 	if err != nil {
 		http.Error(w, "Failed to fetch incidents", http.StatusInternalServerError)
 		return

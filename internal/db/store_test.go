@@ -180,7 +180,7 @@ func TestMonitorOutages(t *testing.T) {
 	}
 
 	// 5. Verify Resolved History
-	history, err := s.GetResolvedOutages(10)
+	history, err := s.GetResolvedOutages(time.Time{})
 	if err != nil {
 		t.Fatalf("GetResolvedOutages failed: %v", err)
 	}

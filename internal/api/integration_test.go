@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/clusteruptime/clusteruptime/internal/config"
 	"github.com/clusteruptime/clusteruptime/internal/db"
 	"github.com/clusteruptime/clusteruptime/internal/uptime"
 )
@@ -24,7 +25,9 @@ func TestAPIKeyIntegrationFlow(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	store, _ := db.NewStore(dbPath)
 	manager := uptime.NewManager(store)
-	router := NewRouter(manager, store)
+	// Use default config for testing
+	cfg := config.Default()
+	router := NewRouter(manager, store, &cfg)
 
 	ts := httptest.NewServer(router)
 	defer ts.Close()

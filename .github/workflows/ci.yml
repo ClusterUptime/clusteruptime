@@ -46,3 +46,12 @@ jobs:
           export GOMODCACHE="$GITHUB_WORKSPACE/.gocache"
           export GOCACHE="$GITHUB_WORKSPACE/.gocache/go"
           go test ./...
+
+      - name: Go Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.60
+
+      - name: Frontend Lint
+        run: npm run lint
+        working-directory: web

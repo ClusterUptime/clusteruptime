@@ -44,7 +44,7 @@ func main() {
 	defer manager.Stop()
 
 	// Init Router
-	r := api.NewRouter(manager, store) // Changed monitor to manager
+	r := api.NewRouter(manager, store, cfg) // Changed monitor to manager
 
 	srv := &http.Server{
 		Addr:    cfg.ListenAddr,
