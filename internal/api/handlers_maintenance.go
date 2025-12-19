@@ -236,5 +236,5 @@ func (h *MaintenanceHandler) DeleteMaintenance(w http.ResponseWriter, r *http.Re
 	go h.manager.Sync()
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"success":true}`))
+	_, _ = w.Write([]byte(`{"success":true}`))
 }

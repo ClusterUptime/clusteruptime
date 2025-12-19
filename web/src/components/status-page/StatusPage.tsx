@@ -1,13 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
-import { Activity, AlertTriangle, ArrowDownCircle, CheckCircle2, Clock, ExternalLink, RefreshCw, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownCircle, CheckCircle2, ExternalLink, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMonitorStore, Group, Incident, Monitor } from "@/lib/store";
@@ -179,7 +172,6 @@ function MaintenanceItem({ incident }: { incident: Incident }) {
     // Apply similar grouping style as IncidentItem but with blue theme
     const bgRow = "bg-blue-500/5 border-blue-500/20";
     const bgBadge = "bg-blue-500/10 text-blue-500 border-0";
-    const textBase = "text-blue-600 dark:text-blue-400";
 
     return (
         <div className={cn("group flex items-center justify-between py-4 px-6 rounded-xl border transition-colors", bgRow)}>
@@ -225,8 +217,8 @@ function MaintenanceItem({ incident }: { incident: Incident }) {
 
 function IncidentItem({ incident }: { incident: Incident }) {
     // Attempt to parse group from Title often formatted as "Service Disruption: [Monitor]"
-    let title = incident.title.replace("Service Disruption: ", "");
-    let group = ""; // Might need access to Groups map to find group name properly, or rely on synthesized ID?
+    const title = incident.title.replace("Service Disruption: ", "");
+    // let group = ""; // Might need access to Groups map to find group name properly, or rely on synthesized ID?
 
     // For manual incidents, title is just Title.
     // We can try to guess status.

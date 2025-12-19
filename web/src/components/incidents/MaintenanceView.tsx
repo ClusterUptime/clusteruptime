@@ -1,9 +1,8 @@
-
 import { useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useMonitorStore, Incident } from "@/lib/store";
-import { Calendar, CheckCircle2, MoreVertical, Pencil, Trash2, XCircle } from "lucide-react";
+import { Calendar, CheckCircle2, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -39,13 +38,7 @@ import {
 // Select imports? Maybe simpler native select or Shadcn Select. Using native for speed/stability if Select not imported.
 // Actually let's assume Select is available or use native. User prefers vanilla Shadcn.
 // Importing Select components
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+
 
 
 
@@ -168,7 +161,7 @@ export function MaintenanceView() {
     const [description, setDescription] = useState("");
     const [startTime, setStartTime] = useState("");
     const [endTime, setEndTime] = useState("");
-    const [selectedGroups, setSelectedGroups] = useState<string[]>([]); // Simple Multi-select? Or single? API supports array.
+    // const [selectedGroups, setSelectedGroups] = useState<string[]>([]); // Simple Multi-select? Or single? API supports array.
     // For simplicity, we might just support "All" or toggle.
     // Let's implement full editing if possible, or minimalistic.
     // Assuming UI simplicity: standard Shadcn doesn't have MultiSelect native. I'll use simple select for single group or "All" logic if needed, or checkboxes.
