@@ -27,6 +27,10 @@ test.describe('ClusterUptime Smoke Tests', () => {
         // 3. Verify Dashboard Access
         await expect(page).toHaveURL(/.*dashboard|.*\/$/);
 
+        // Wait for full load to avoid CI timeouts on "New Monitor" click
+        console.log('>> Waiting for Dashboard Load...');
+        await dashboardPage.waitForLoad();
+
         // 4. Edge Case: Invalid URL
         console.log('>> Testing Edge Case: Invalid URL...');
         await dashboardPage.createInvalidMonitor(`Invalid Mon ${Date.now()}`, 'not-a-url');
