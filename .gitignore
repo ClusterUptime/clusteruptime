@@ -59,3 +59,5 @@ web/coverage/
 coverage/
 *.lcov
 junit.xml
+
+dashboard

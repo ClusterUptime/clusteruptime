@@ -31,12 +31,12 @@ export class DashboardPage {
     }
 
     async waitForLoad() {
-        // Wait for App Loader
-        await expect(this.page.getByTestId('loading-spinner')).toHaveCount(0, { timeout: 15000 });
+        // Wait for App Loader (Increase to 30s for CI)
+        await expect(this.page.getByTestId('loading-spinner')).toHaveCount(0, { timeout: 30000 });
         // Wait for Auth Check
-        await expect(this.page.getByText('Wait ...')).toHaveCount(0, { timeout: 15000 });
+        await expect(this.page.getByText('Wait ...')).toHaveCount(0, { timeout: 30000 });
         // Wait for Trigger
-        await expect(this.createMonitorTrigger).toBeVisible({ timeout: 10000 });
+        await expect(this.createMonitorTrigger).toBeVisible({ timeout: 30000 });
     }
 
     async createGroup(name: string) {

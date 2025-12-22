@@ -1,4 +1,4 @@
-import { Page, Locator } from '@playwright/test';
+import { Page, Locator, expect } from '@playwright/test';
 
 export class SetupPage {
     readonly page: Page;
@@ -32,5 +32,10 @@ export class SetupPage {
         await this.continueBtn.click();
         await this.continueBtn2.click(); // Timezone
         await this.launchBtn.click();   // Launch
+
+        // Wait for successful redirection to Dashboard
+        // The setup page uses window.location.href = "/" which eventually hits /dashboard
+        // Wait for successful redirection to Dashboard OR Login (if auth state didn't persist)
+        await expect(this.page).toHaveURL(/.*(dashboard|login)/, { timeout: 30000 });
     }
 }

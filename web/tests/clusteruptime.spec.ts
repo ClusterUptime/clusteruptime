@@ -14,14 +14,18 @@ test.describe('ClusterUptime Smoke Tests', () => {
         await dashboardPage.goto();
 
         // 2. Handle Setup or Login
+        // 2. Handle Setup
         if (await setupPage.isVisible()) {
             console.log('>> Setup Required.');
             await setupPage.completeSetup();
-        } else if (await loginPage.isVisible()) {
+        }
+
+        // 3. Handle Login (Check again, as Setup might have redirected to Login)
+        if (await loginPage.isVisible()) {
             console.log('>> Login Required.');
             await loginPage.login();
         } else {
-            console.log('>> Already authenticated.');
+            console.log('>> Already authenticated (or skipped login).');
         }
 
         // 3. Verify Dashboard Access
