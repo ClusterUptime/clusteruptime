@@ -59,7 +59,7 @@ export class DashboardPage {
         await expect(badge).toBeVisible();
     }
 
-    async deleteGroup(groupName: string) {
+    async deleteGroup(_groupName: string) {
         // Assume we are on a page where this group is visible in the sidebar or header
         // For deleting, we usually are on the group page, so we click the trash icon in header
         await expect(this.page.getByTestId('delete-group-trigger')).toBeVisible();

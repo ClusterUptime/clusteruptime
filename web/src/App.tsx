@@ -318,7 +318,6 @@ function AdminLayout() {
     if (isIncidents) items.push({ title: "Incidents", url: "/incidents", active: true });
     else if (isMaintenance) items.push({ title: "Maintenance", url: "/maintenance", active: true });
     else if (isNotifications) items.push({ title: "Notifications", url: "/notifications", active: true });
-    else if (isNotifications) items.push({ title: "Notifications", url: "/notifications", active: true });
     else if (isSettings) items.push({ title: "Settings", url: "/settings", active: true });
     else if (isStatusPages) items.push({ title: "Status Pages", url: "/status-pages", active: true });
     else if (isApiKeys) items.push({ title: "API Keys", url: "/settings/api-keys", active: true });
