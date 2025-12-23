@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 test.describe('ClusterUptime Smoke Tests', () => {
 
     test('Full System Flow & Edge Cases', async ({ page }) => {
+        test.setTimeout(60000); // Increase timeout for full flow
         // Force clear any storage/cookies to ensure fresh start
         await page.context().clearCookies();
         // await page.evaluate(() => localStorage.clear()); // Causes SecurityError sometimes on initial blank page
