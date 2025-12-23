@@ -30,7 +30,7 @@ test.describe('Custom Username Setup', () => {
         console.log(">> [TEARDOWN] Ensuring clean state (Admin Reset via Test Key)...");
 
         // 1. Reset DB via Admin Secret (Bypassing Auth)
-        const resetRes = await request.post('/api/admin/reset', {
+        const resetRes = await request.post('http://localhost:9096/api/admin/reset', {
             headers: { 'X-Admin-Secret': 'clusteruptime-e2e-magic-key' }
         });
 
@@ -40,7 +40,7 @@ test.describe('Custom Username Setup', () => {
 
         // 2. Restore Admin user
         // MUST use the standard password so other tests don't break.
-        const setupRes = await request.post('/api/setup', {
+        const setupRes = await request.post('http://localhost:9096/api/setup', {
             data: {
                 username: 'admin',
                 password: STANDARD_ADMIN_PASSWORD,
@@ -58,7 +58,7 @@ test.describe('Custom Username Setup', () => {
         page.on('console', msg => console.log('BROWSER LOG:', msg.text()));
 
         // 1. Reset DB via Admin Secret (Bypassing Auth)
-        const resetRes = await request.post('/api/admin/reset', {
+        const resetRes = await request.post('http://localhost:9096/api/admin/reset', {
             headers: { 'X-Admin-Secret': 'clusteruptime-e2e-magic-key' }
         });
         expect(resetRes.ok()).toBeTruthy();

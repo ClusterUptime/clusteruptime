@@ -14,7 +14,7 @@ test.describe('Password Update Flow', () => {
         // Let's rely on the standard "Reset DB" mechanism to have a clean slate.
         // But reset removes all users. So we must go through setup or use the backdoor if exists.
         // Our setup creates "admin" user usually.
-        // Let's use the X-Cluster-Test-Key to reset DB and then Setup API to create a known user.
+        // Let's use the X-Admin-Secret to reset DB and then Setup API to create a known user.
 
         const resetRes = await request.post('http://localhost:9096/api/admin/reset', {
             headers: { 'X-Admin-Secret': 'clusteruptime-e2e-magic-key' }
@@ -68,5 +68,23 @@ test.describe('Password Update Flow', () => {
         await loginPage.logout();
         await loginPage.login(TEST_USER, NEW_PASS);
         await expect(page).toHaveURL(/\/dashboard/);
+    });
+
+    test.afterAll(async ({ request }) => {
+        // Restore Admin user for subsequent tests
+        const resetRes = await request.post('http://localhost:9096/api/admin/reset', {
+            headers: { 'X-Admin-Secret': 'clusteruptime-e2e-magic-key' }
+        });
+        expect(resetRes.ok()).toBeTruthy();
+
+        const setupRes = await request.post('http://localhost:9096/api/setup', {
+            data: {
+                username: 'admin',
+                password: 'password123!',
+                timezone: 'UTC',
+                createDefaults: true
+            }
+        });
+        expect(setupRes.ok()).toBeTruthy();
     });
 });

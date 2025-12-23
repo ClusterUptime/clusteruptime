@@ -72,6 +72,8 @@ jobs:
 
       # 6. E2E Tests
       - name: Start Full Stack
+        env:
+          ADMIN_SECRET: clusteruptime-e2e-magic-key
         run: |
           ./clusteruptime &
           echo "Waiting for server to start..."
