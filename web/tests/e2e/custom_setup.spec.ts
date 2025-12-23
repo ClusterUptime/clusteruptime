@@ -26,12 +26,12 @@ function generateStrongPassword(): string {
 
 test.describe('Custom Username Setup', () => {
 
-    test.afterEach(async ({ page, request }) => {
+    test.afterEach(async ({ request }) => {
         console.log(">> [TEARDOWN] Ensuring clean state (Admin Reset via Test Key)...");
 
-        // 1. Reset DB using MAGIC KEY (Bypassing Auth)
+        // 1. Reset DB via Admin Secret (Bypassing Auth)
         const resetRes = await request.post('/api/admin/reset', {
-            headers: { 'X-Cluster-Test-Key': 'clusteruptime-e2e-magic-key' }
+            headers: { 'X-Admin-Secret': 'clusteruptime-e2e-magic-key' }
         });
 
         if (!resetRes.ok()) {
@@ -57,9 +57,9 @@ test.describe('Custom Username Setup', () => {
     test('Should allow setting up with a non-admin username and strong password', async ({ page, request }) => {
         page.on('console', msg => console.log('BROWSER LOG:', msg.text()));
 
-        // 1. Prepare: Reset DB via Test Key
+        // 1. Reset DB via Admin Secret (Bypassing Auth)
         const resetRes = await request.post('/api/admin/reset', {
-            headers: { 'X-Cluster-Test-Key': 'clusteruptime-e2e-magic-key' }
+            headers: { 'X-Admin-Secret': 'clusteruptime-e2e-magic-key' }
         });
         expect(resetRes.ok()).toBeTruthy();
 

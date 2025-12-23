@@ -8,6 +8,7 @@ type Config struct {
 	ListenAddr   string
 	DBPath       string
 	CookieSecure bool
+	AdminSecret  string
 }
 
 func Default() Config {
@@ -31,6 +32,10 @@ func Load() (*Config, error) {
 
 	if os.Getenv("COOKIE_SECURE") == "true" {
 		cfg.CookieSecure = true
+	}
+
+	if secret := os.Getenv("ADMIN_SECRET"); secret != "" {
+		cfg.AdminSecret = secret
 	}
 
 	return &cfg, nil

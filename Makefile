@@ -5,7 +5,7 @@ BIN_DIR ?= $(PWD)/bin
 BINARY ?= $(BIN_DIR)/clusteruptime
 
 dev-backend:
-	$(BACKEND_ENV) go run ./cmd/dashboard
+	ADMIN_SECRET=clusteruptime-e2e-magic-key $(BACKEND_ENV) go run ./cmd/dashboard
 
 backend: dev-backend
 

@@ -39,7 +39,7 @@ func NewRouter(manager *uptime.Manager, store *db.Store, cfg *config.Config) htt
 	statsH := NewStatsHandler(store)
 	settingsH := NewSettingsHandler(store, manager)
 	apiKeyH := NewAPIKeyHandler(store)
-	adminH := NewAdminHandler(store, manager)
+	adminH := NewAdminHandler(store, manager, cfg)
 	incidentH := NewIncidentHandler(store)
 	maintH := NewMaintenanceHandler(store, manager)
 	eventH := NewEventHandler(store, manager)
@@ -141,7 +141,7 @@ func NewRouter(manager *uptime.Manager, store *db.Store, cfg *config.Config) htt
 
 	// Workaround for Vite Proxy stripping /api prefix for api-keys
 	r.Group(func(r chi.Router) {
-		// r.Use(authH.AuthMiddleware) // Temporarily disabled for E2E Test (Vite Proxy Cookie Issue)
+		r.Use(authH.AuthMiddleware)
 		r.Get("/api-keys", apiKeyH.ListKeys)
 		r.Post("/api-keys", apiKeyH.CreateKey)
 		r.Delete("/api-keys/{id}", apiKeyH.DeleteKey)

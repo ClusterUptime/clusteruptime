@@ -3,7 +3,9 @@ package api
 import (
 	"log"
 	"net/http"
+	"strings"
 
+	"github.com/clusteruptime/clusteruptime/internal/config"
 	"github.com/clusteruptime/clusteruptime/internal/db"
 	"github.com/clusteruptime/clusteruptime/internal/uptime"
 )
@@ -11,21 +13,29 @@ import (
 type AdminHandler struct {
 	store   *db.Store
 	manager *uptime.Manager
+	config  *config.Config
 }
 
-func NewAdminHandler(store *db.Store, manager *uptime.Manager) *AdminHandler {
-	return &AdminHandler{store: store, manager: manager}
+func NewAdminHandler(store *db.Store, manager *uptime.Manager, cfg *config.Config) *AdminHandler {
+	return &AdminHandler{store: store, manager: manager, config: cfg}
 }
-
-const TestResetKey = "clusteruptime-e2e-magic-key"
-const TestResetHeader = "X-Cluster-Test-Key"
 
 func (h *AdminHandler) ResetDatabase(w http.ResponseWriter, r *http.Request) {
-	// 1. Check Test Key (Bypass Auth)
-	if r.Header.Get(TestResetHeader) == TestResetKey {
-		log.Println("ADMIN: Resetting database via Test Key bypass.")
-		h.performReset(w)
-		return
+	// 1. Check Admin Secret (Stateless bypass for CI/Tests)
+	if h.config.AdminSecret != "" {
+		// Support both Header and Bearer token
+		secretHeader := r.Header.Get("X-Admin-Secret")
+		authHeader := r.Header.Get("Authorization")
+		bearerSecret := ""
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			bearerSecret = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+
+		if secretHeader == h.config.AdminSecret || (bearerSecret != "" && bearerSecret == h.config.AdminSecret) {
+			log.Println("ADMIN: Resetting database via Admin Secret bypass.")
+			h.performReset(w)
+			return
+		}
 	}
 
 	// 2. Check Standard Auth (Cookie)
