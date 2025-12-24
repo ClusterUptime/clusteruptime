@@ -34,11 +34,6 @@ export class NotificationsPage {
         await expect(this.page.getByRole('heading', { name: /Notification/i }).first()).toBeVisible({ timeout: 5000 });
         console.log('View Header Visible!');
 
-        // Debugging visibility
-        console.log('Waiting for Debug Button...');
-        await expect(this.page.getByTestId('debug-button-always')).toBeVisible({ timeout: 5000 });
-        console.log('Debug Button Visible!');
-
         await expect(this.addChannelTrigger).toBeVisible();
         await this.addChannelTrigger.click();
 

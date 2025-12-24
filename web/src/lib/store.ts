@@ -21,6 +21,7 @@ export interface NotificationChannel {
 }
 
 export interface User {
+    username: string; // Correct property name
     name: string;
     email: string;
     avatar: string;
@@ -161,7 +162,7 @@ interface MonitorStore {
     deleteChannel: (id: string) => Promise<void>;
     fetchChannels: () => Promise<void>;
 
-    updateUser: (data: { password?: string; timezone?: string }) => Promise<void>;
+    updateUser: (data: { password?: string; currentPassword?: string; timezone?: string }) => Promise<void>;
 
     // Status Pages
     fetchStatusPages: () => Promise<StatusPage[]>;
@@ -184,7 +185,7 @@ interface MonitorStore {
 
     // Setup
     checkSetupStatus: () => Promise<boolean>;
-    performSetup: (data: SetupPayload) => Promise<boolean>;
+    performSetup: (data: SetupPayload) => Promise<{ success: boolean; error?: string }>;
 }
 
 export interface SetupPayload {
@@ -240,13 +241,20 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
 
             if (res.ok) {
                 set({ isSetupComplete: true });
-                return true;
+                return { success: true };
             } else {
-                return false;
+                const text = await res.text();
+                // try parse json
+                try {
+                    const json = JSON.parse(text);
+                    return { success: false, error: json.error || text };
+                } catch {
+                    return { success: false, error: text || "Unknown server error" };
+                }
             }
         } catch (e) {
             console.error("Setup failed or timed out", e);
-            return false;
+            return { success: false, error: "Network connection refused or timeout" };
         }
     },
     fetchSystemEvents: async () => {
@@ -268,7 +276,19 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                 body: JSON.stringify(data),
                 credentials: 'include'
             });
-            if (!res.ok) throw new Error("Failed to update settings");
+            if (!res.ok) {
+                const text = await res.text();
+                try {
+                    const json = JSON.parse(text);
+                    throw new Error(json.error || "Failed to update settings");
+                } catch (e) {
+                    // If JSON parse fails or it was the error throw above, rethrow if it's the error we just created, or create new one
+                    if (e instanceof Error && e.message !== "Unexpected token " && e.message !== "Unexpected end of JSON input" && !e.message.includes("JSON")) {
+                        throw e;
+                    }
+                    throw new Error("Failed to update settings");
+                }
+            }
 
             // Update local user state if timezone changed
             const currentUser = get().user;
@@ -318,7 +338,8 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                 const data = await res.json();
                 set({
                     user: {
-                        name: data.user.username,
+                        username: data.user.username,
+                        name: data.user.username, // keep name for compatibility if needed
                         email: "admin@clusteruptime.com",
                         avatar: data.user.avatar || "https://github.com/shadcn.png",
                         isAuthenticated: true,
@@ -349,6 +370,7 @@ export const useMonitorStore = create<MonitorStore>((set, get) => ({
                 const data = await res.json();
                 set({
                     user: {
+                        username: data.user.username,
                         name: data.user.username,
                         email: "admin@clusteruptime.com",
                         avatar: data.user.avatar || "https://github.com/shadcn.png",

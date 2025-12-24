@@ -381,7 +381,6 @@ function AdminLayout() {
                   <CreateMonitorSheet groups={safeGroups} defaultGroup={activeGroup?.name} />
                 </>
               )}
-              <Button data-testid="debug-button-always">DebugAlways</Button>
             </div>
           </header>
           <ScrollArea className="flex-1 p-4 pt-0 h-[calc(100vh-4rem)]">
@@ -433,11 +432,12 @@ const App = () => {
     );
   }
 
-  // If setup is NOT complete, force setup page for all routes except static assets if any
+  // If setup is NOT complete, force setup page for all routes
   if (!isSetupComplete) {
     return (
       <Routes>
-        <Route path="*" element={<SetupPage />} />
+        <Route path="/setup" element={<SetupPage />} />
+        <Route path="*" element={<Navigate to="/setup" replace />} />
       </Routes>
     )
   }
